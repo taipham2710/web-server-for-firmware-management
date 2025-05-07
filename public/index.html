@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hệ thống quản lý firmware ESP32</title>
+  <link href="./style.css" rel="stylesheet">
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1 class="text-center">Hệ thống quản lý firmware ESP32, ESP8266</h1>
+      <p class="text-center text-muted">Quản lý và cập nhật firmware cho thiết bị ESP32, ESP8266</p>
+    </div>
+
+    <div class="row">
+      <!-- Kiểm tra firmware hiện tại -->
+      <div class="col-md-6">
+        <div class="card">
+          <div class="card-header">
+            <h5>Thông tin firmware hiện tại</h5>
+          </div>
+          <div class="card-body">
+            <div id="currentFirmware">
+              <p>Đang tải thông tin firmware...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Upload firmware mới -->
+      <div class="col-md-6">
+        <div class="card">
+          <div class="card-header">
+            <h5>Upload firmware mới</h5>
+          </div>
+          <div class="card-body">
+            <form id="uploadForm">
+              <div class="mb-3">
+                <label for="firmwareVersion" class="form-label">Phiên bản</label>
+                <input type="text" class="form-control" id="firmwareVersion" name="version" required placeholder="Ví dụ: 1.0.0">
+              </div>
+              <div class="mb-3">
+                <label for="deviceType" class="form-label">Loại thiết bị</label>
+                <select class="form-select" id="deviceType" name="device">
+                  <option value="esp32" selected>ESP32</option>
+                  <option value="esp8266">ESP8266</option>
+                </select>
+              </div>
+              <div class="mb-3">
+                <label for="firmwareNotes" class="form-label">Ghi chú</label>
+                <textarea class="form-control" id="firmwareNotes" name="notes" rows="3" placeholder="Mô tả các thay đổi trong phiên bản này"></textarea>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">File firmware (.bin)</label>
+                <div id="dropArea" class="upload-area">
+                  <p>Kéo file firmware vào đây hoặc <strong>click để chọn file</strong></p>
+                  <input type="file" id="firmwareFile" name="firmware" style="display: none;" accept=".bin">
+                </div>
+                <div id="fileInfo" class="alert alert-info">
+                  <p><strong>File đã chọn:</strong> <span id="fileName"></span></p>
+                  <p><strong>Kích thước:</strong> <span id="fileSize"></span></p>
+                </div>
+              </div>
+              <button type="submit" class="btn btn-success">Upload firmware</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Lịch sử cập nhật firmware -->
+    <div class="row mt-4">
+      <div class="col-12">
+        <div class="card">
+          <div class="card-header">
+            <h5>Lịch sử phiên bản firmware</h5>
+          </div>
+          <div class="card-body">
+            <table class="table table-striped">
+              <thead>
+                <tr>
+                  <th>Phiên bản</th>
+                  <th>Loại thiết bị</th>
+                  <th>Ngày upload</th>
+                  <th>Ghi chú</th>
+                  <th>Thao tác</th>
+                </tr>
+              </thead>
+              <tbody id="firmwareHistory">
+                <tr>
+                  <td colspan="5" class="text-center">Đang tải dữ liệu...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Thông tin cấu hình GitHub -->
+    <div class="row mt-4">
+      <div class="col-12">
+        <div class="card">
+          <div class="card-header">
+            <h5>Cấu hình GitHub Webhook</h5>
+          </div>
+          <div class="card-body">
+            <p>Để tích hợp tự động với GitHub, hãy thêm webhook với URL sau vào repository của bạn:</p>
+            <div class="input-group mb-3">
+              <input type="text" class="form-control" id="webhookUrl" readonly>
+              <button class="btn btn-outline-secondary" type="button" id="copyWebhook">Sao chép</button>
+            </div>
+            <p>Cấu hình webhook:</p>
+            <ul>
+              <li>Content type: <code>application/json</code></li>
+              <li>Events: <code>Push</code></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      // Điền URL webhook
+      const webhookUrl = `${window.location.origin}/api/github/webhook`;
+      document.getElementById('webhookUrl').value = webhookUrl;
+
+      // Xử lý nút sao chép webhook URL
+      document.getElementById('copyWebhook').addEventListener('click', function() {
+        const webhookUrlInput = document.getElementById('webhookUrl');
+        webhookUrlInput.select();
+        document.execCommand('copy');
+        this.textContent = 'Đã sao chép';
+        setTimeout(() => {
+          this.textContent = 'Sao chép';
+        }, 2000);
+      });
+
+      // Kiểm tra firmware hiện tại
+      function checkCurrentFirmware() {
+        fetch('/api/firmware/version')
+          .then(response => {
+            if (!response.ok) {
+              throw new Error('Không thể tải thông tin firmware');
+            }
+            return response.json();
+          })
+          .then(data => {
+            const firmwareInfo = `
+              <dl class="row">
+                <dt class="col-sm-4">Phiên bản hiện tại:</dt>
+                <dd class="col-sm-8">${data.version}</dd>
+                <dt class="col-sm-4">Loại thiết bị:</dt>
+                <dd class="col-sm-8">${data.device}</dd>
+                <dt class="col-sm-4">Ngày cập nhật:</dt>
+                <dd class="col-sm-8">${new Date(data.uploadDate).toLocaleString()}</dd>
+                <dt class="col-sm-4">Ghi chú:</dt>
+                <dd class="col-sm-8">${data.notes || 'Không có'}</dd>
+              </dl>
+              <div class="d-flex gap-2">
+                <a href="/api/firmware/download?device=${data.device}&version=${data.version}" 
+                  class="btn btn-outline-primary btn-sm">Tải xuống firmware</a>
+                <button id="checkFirmware" class="btn btn-primary btn-sm">Kiểm tra lại</button>
+                <button id="deleteFirmware" class="btn btn-danger btn-sm" 
+                  onclick="deleteFirmware('${data.version}', '${data.device}')">Xóa firmware</button>
+              </div>
+            `;
+            
+            document.getElementById('currentFirmware').innerHTML = firmwareInfo;
+
+            // Gắn lại sự kiện cho nút kiểm tra lại
+            document.getElementById('checkFirmware').addEventListener('click', checkCurrentFirmware);
+          })
+          .catch(error => {
+            document.getElementById('currentFirmware').innerHTML = `
+              <div class="alert alert-warning">
+                ${error.message}
+              </div>
+            `;
+          });
+      }
+
+      // Xử lý kéo thả file firmware
+      const dropArea = document.getElementById('dropArea');
+      const fileInput = document.getElementById('firmwareFile');
+      
+      dropArea.addEventListener('click', () => {
+        fileInput.click();
+      });
+      
+      dropArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropArea.classList.add('active');
+      });
+      
+      dropArea.addEventListener('dragleave', () => {
+        dropArea.classList.remove('active');
+      });
+      
+      dropArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropArea.classList.remove('active');
+        
+        if (e.dataTransfer.files.length) {
+          fileInput.files = e.dataTransfer.files;
+          updateFileInfo(e.dataTransfer.files[0]);
+        }
+      });
+      
+      fileInput.addEventListener('change', () => {
+        if (fileInput.files.length) {
+          updateFileInfo(fileInput.files[0]);
+        }
+      });
+      
+      function updateFileInfo(file) {
+        const fileInfo = document.getElementById('fileInfo');
+        const fileName = document.getElementById('fileName');
+        const fileSize = document.getElementById('fileSize');
+        
+        fileInfo.style.display = 'block';
+        fileName.textContent = file.name;
+        fileSize.textContent = formatFileSize(file.size);
+      }
+      
+      function formatFileSize(bytes) {
+        if (bytes < 1024) return bytes + ' bytes';
+        else if (bytes < 1048576) return (bytes / 1024).toFixed(2) + ' KB';
+        else return (bytes / 1048576).toFixed(2) + ' MB';
+      }
+
+      // Xử lý form upload
+      const uploadForm = document.getElementById('uploadForm');
+      
+      uploadForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        
+        const formData = new FormData(uploadForm);
+        
+        if (!fileInput.files.length) {
+          alert('Vui lòng chọn file firmware!');
+          return;
+        }
+        
+        fetch('/api/firmware/upload', {
+          method: 'POST',
+          body: formData
+        })
+          .then(response => {
+            if (!response.ok) {
+              throw new Error('Upload thất bại');
+            }
+            return response.json();
+          })
+          .then(data => {
+            alert('Upload firmware thành công!');
+            uploadForm.reset();
+            document.getElementById('fileInfo').style.display = 'none';
+            checkCurrentFirmware();
+            loadFirmwareHistory();
+          })
+          .catch(error => {
+            alert(`Lỗi: ${error.message}`);
+          });
+      });
+
+      // Thêm hàm xóa firmware
+      function deleteFirmware(version, device) {
+        if (!confirm('Bạn có chắc chắn muốn xóa firmware này?')) {
+          return;
+        }
+        
+        fetch(`/api/firmware/${version}?device=${device}`, {
+          method: 'DELETE'
+        })
+          .then(response => {
+            if (!response.ok) {
+              throw new Error('Xóa firmware thất bại');
+            }
+            return response.json();
+          })
+          .then(data => {
+            alert('Xóa firmware thành công!');
+            checkCurrentFirmware();
+            loadFirmwareHistory();
+          })
+          .catch(error => {
+            alert(`Lỗi: ${error.message}`);
+          });
+      }
+
+      // Load dữ liệu ban đầu
+      checkCurrentFirmware();
+
+      // Hàm lấy và hiển thị lịch sử firmware
+      function loadFirmwareHistory() {
+        fetch('/api/firmware/history')
+          .then(response => {
+            if (!response.ok) throw new Error('Không thể tải lịch sử firmware');
+            return response.json();
+          })
+          .then(data => {
+            const tbody = document.getElementById('firmwareHistory');
+            if (!data.length) {
+              tbody.innerHTML = `<tr><td colspan="5" class="text-center">Chưa có lịch sử firmware</td></tr>`;
+              return;
+            }
+            tbody.innerHTML = data.map(item => `
+              <tr>
+                <td>${item.version}</td>
+                <td>${item.device}</td>
+                <td>${new Date(item.upload_date).toLocaleString()}</td>
+                <td>${item.notes || ''}</td>
+                <td>
+                  <a href="/api/firmware/download?device=${item.device}&version=${item.version}" class="btn btn-sm btn-outline-primary">Tải xuống</a>
+                </td>
+              </tr>
+            `).join('');
+          })
+          .catch(error => {
+            document.getElementById('firmwareHistory').innerHTML = `
+              <tr><td colspan="5" class="text-center text-danger">${error.message}</td></tr>
+            `;
+          });
+      }
+
+      loadFirmwareHistory();
+    });
+  </script>
+</body>
+</html>
