@@ -3,63 +3,63 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Hệ thống quản lý firmware ESP32</title>
+  <title>System Firmware Management ESP32, ESP8266</title>
   <link href="./style.css" rel="stylesheet">
 </head>
 <body>
   <div class="container">
     <div class="header">
-      <h1 class="text-center">Hệ thống quản lý firmware ESP32, ESP8266</h1>
-      <p class="text-center text-muted">Quản lý và cập nhật firmware cho thiết bị ESP32, ESP8266</p>
+      <h1 class="text-center">System Firmware Management ESP32, ESP8266</h1>
+      <p class="text-center text-muted">Manage and update firmware for ESP32, ESP8266 devices</p>
     </div>
 
     <div class="row">
-      <!-- Kiểm tra firmware hiện tại -->
+      <!-- Current firmware information -->
       <div class="col-md-6">
         <div class="card">
           <div class="card-header">
-            <h5>Thông tin firmware hiện tại</h5>
+            <h5>Current Firmware Information</h5>
           </div>
           <div class="card-body">
             <div id="currentFirmware">
-              <p>Đang tải thông tin firmware...</p>
+              <p>Loading firmware information...</p>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Upload firmware mới -->
+      <!-- Upload new firmware -->
       <div class="col-md-6">
         <div class="card">
           <div class="card-header">
-            <h5>Upload firmware mới</h5>
+            <h5>Upload New Firmware</h5>
           </div>
           <div class="card-body">
             <form id="uploadForm">
               <div class="mb-3">
-                <label for="firmwareVersion" class="form-label">Phiên bản</label>
-                <input type="text" class="form-control" id="firmwareVersion" name="version" required placeholder="Ví dụ: 1.0.0">
+                <label for="firmwareVersion" class="form-label">Version</label>
+                <input type="text" class="form-control" id="firmwareVersion" name="version" required placeholder="Example: 1.0.0">
               </div>
               <div class="mb-3">
-                <label for="deviceType" class="form-label">Loại thiết bị</label>
+                <label for="deviceType" class="form-label">Device Type</label>
                 <select class="form-select" id="deviceType" name="device">
                   <option value="esp32" selected>ESP32</option>
                   <option value="esp8266">ESP8266</option>
                 </select>
               </div>
               <div class="mb-3">
-                <label for="firmwareNotes" class="form-label">Ghi chú</label>
-                <textarea class="form-control" id="firmwareNotes" name="notes" rows="3" placeholder="Mô tả các thay đổi trong phiên bản này"></textarea>
+                <label for="firmwareNotes" class="form-label">Notes</label>
+                <textarea class="form-control" id="firmwareNotes" name="notes" rows="3" placeholder="Describe the changes in this version"></textarea>
               </div>
               <div class="mb-3">
-                <label class="form-label">File firmware (.bin)</label>
+                <label class="form-label">Firmware file (.bin)</label>
                 <div id="dropArea" class="upload-area">
-                  <p>Kéo file firmware vào đây hoặc <strong>click để chọn file</strong></p>
+                  <p>Drag and drop the firmware file here or <strong>click to select a file</strong></p>
                   <input type="file" id="firmwareFile" name="firmware" style="display: none;" accept=".bin">
                 </div>
                 <div id="fileInfo" class="alert alert-info">
-                  <p><strong>File đã chọn:</strong> <span id="fileName"></span></p>
-                  <p><strong>Kích thước:</strong> <span id="fileSize"></span></p>
+                  <p><strong>Selected file:</strong> <span id="fileName"></span></p>
+                  <p><strong>Size:</strong> <span id="fileSize"></span></p>
                 </div>
               </div>
               <button type="submit" class="btn btn-success">Upload firmware</button>
@@ -69,27 +69,27 @@
       </div>
     </div>
 
-    <!-- Lịch sử cập nhật firmware -->
+    <!-- Firmware update history -->
     <div class="row mt-4">
       <div class="col-12">
         <div class="card">
           <div class="card-header">
-            <h5>Lịch sử phiên bản firmware</h5>
+            <h5>Firmware Version History</h5>
           </div>
           <div class="card-body">
             <table class="table table-striped">
               <thead>
                 <tr>
-                  <th>Phiên bản</th>
-                  <th>Loại thiết bị</th>
-                  <th>Ngày upload</th>
-                  <th>Ghi chú</th>
-                  <th>Thao tác</th>
+                  <th>Version</th>
+                  <th>Device Type</th>
+                  <th>Upload Date</th>
+                  <th>Notes</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody id="firmwareHistory">
                 <tr>
-                  <td colspan="5" class="text-center">Đang tải dữ liệu...</td>
+                  <td colspan="5" class="text-center">Loading data...</td>
                 </tr>
               </tbody>
             </table>
@@ -98,20 +98,20 @@
       </div>
     </div>
 
-    <!-- Thông tin cấu hình GitHub -->
+    <!-- GitHub Webhook Configuration -->
     <div class="row mt-4">
       <div class="col-12">
         <div class="card">
           <div class="card-header">
-            <h5>Cấu hình GitHub Webhook</h5>
+            <h5>GitHub Webhook Configuration</h5>
           </div>
           <div class="card-body">
-            <p>Để tích hợp tự động với GitHub, hãy thêm webhook với URL sau vào repository của bạn:</p>
+            <p>To integrate automatically with GitHub, add a webhook with the following URL to your repository:</p>
             <div class="input-group mb-3">
               <input type="text" class="form-control" id="webhookUrl" readonly>
-              <button class="btn btn-outline-secondary" type="button" id="copyWebhook">Sao chép</button>
+              <button class="btn btn-outline-secondary" type="button" id="copyWebhook">Copy</button>
             </div>
-            <p>Cấu hình webhook:</p>
+            <p>Webhook Configuration:</p>
             <ul>
               <li>Content type: <code>application/json</code></li>
               <li>Events: <code>Push</code></li>
@@ -133,45 +133,45 @@
         const webhookUrlInput = document.getElementById('webhookUrl');
         webhookUrlInput.select();
         document.execCommand('copy');
-        this.textContent = 'Đã sao chép';
+        this.textContent = 'Copied!';
         setTimeout(() => {
-          this.textContent = 'Sao chép';
+          this.textContent = 'Copy';
         }, 2000);
       });
 
-      // Kiểm tra firmware hiện tại
+      // Check current firmware
       function checkCurrentFirmware() {
         fetch('/api/firmware/version')
           .then(response => {
             if (!response.ok) {
-              throw new Error('Không thể tải thông tin firmware');
+              throw new Error('Unable to load firmware information');
             }
             return response.json();
           })
           .then(data => {
             const firmwareInfo = `
               <dl class="row">
-                <dt class="col-sm-4">Phiên bản hiện tại:</dt>
+                <dt class="col-sm-4">Current Version:</dt>
                 <dd class="col-sm-8">${data.version}</dd>
-                <dt class="col-sm-4">Loại thiết bị:</dt>
+                <dt class="col-sm-4">Device Type:</dt>
                 <dd class="col-sm-8">${data.device}</dd>
-                <dt class="col-sm-4">Ngày cập nhật:</dt>
+                <dt class="col-sm-4">Upload Date:</dt>
                 <dd class="col-sm-8">${new Date(data.uploadDate).toLocaleString()}</dd>
-                <dt class="col-sm-4">Ghi chú:</dt>
-                <dd class="col-sm-8">${data.notes || 'Không có'}</dd>
+                <dt class="col-sm-4">Notes:</dt>
+                <dd class="col-sm-8">${data.notes || 'N/A'}</dd>
               </dl>
               <div class="d-flex gap-2">
                 <a href="/api/firmware/download?device=${data.device}&version=${data.version}" 
-                  class="btn btn-outline-primary btn-sm">Tải xuống firmware</a>
-                <button id="checkFirmware" class="btn btn-primary btn-sm">Kiểm tra lại</button>
+                  class="btn btn-outline-primary btn-sm">Download Firmware</a>
+                <button id="checkFirmware" class="btn btn-primary btn-sm">Check Again</button>
                 <button id="deleteFirmware" class="btn btn-danger btn-sm" 
-                  onclick="deleteFirmware('${data.version}', '${data.device}')">Xóa firmware</button>
+                  onclick="deleteFirmware('${data.version}', '${data.device}')">Delete Firmware</button>
               </div>
             `;
             
             document.getElementById('currentFirmware').innerHTML = firmwareInfo;
 
-            // Gắn lại sự kiện cho nút kiểm tra lại
+            // Re-attach event for Check Again button
             document.getElementById('checkFirmware').addEventListener('click', checkCurrentFirmware);
           })
           .catch(error => {
@@ -183,7 +183,7 @@
           });
       }
 
-      // Xử lý kéo thả file firmware
+      // Handle drag and drop for firmware file
       const dropArea = document.getElementById('dropArea');
       const fileInput = document.getElementById('firmwareFile');
       
@@ -232,7 +232,7 @@
         else return (bytes / 1048576).toFixed(2) + ' MB';
       }
 
-      // Xử lý form upload
+      // Handle upload form submission
       const uploadForm = document.getElementById('uploadForm');
       
       uploadForm.addEventListener('submit', (e) => {
@@ -241,7 +241,7 @@
         const formData = new FormData(uploadForm);
         
         if (!fileInput.files.length) {
-          alert('Vui lòng chọn file firmware!');
+          alert('Please select a firmware file!');
           return;
         }
         
@@ -251,25 +251,25 @@
         })
           .then(response => {
             if (!response.ok) {
-              throw new Error('Upload thất bại');
+              throw new Error('Upload failed');
             }
             return response.json();
           })
           .then(data => {
-            alert('Upload firmware thành công!');
+            alert('Upload firmware successful!');
             uploadForm.reset();
             document.getElementById('fileInfo').style.display = 'none';
             checkCurrentFirmware();
             loadFirmwareHistory();
           })
           .catch(error => {
-            alert(`Lỗi: ${error.message}`);
+            alert(`Error: ${error.message}`);
           });
       });
 
-      // Thêm hàm xóa firmware
+      // Add function to delete firmware
       function deleteFirmware(version, device) {
-        if (!confirm('Bạn có chắc chắn muốn xóa firmware này?')) {
+        if (!confirm('Are you sure you want to delete this firmware?')) {
           return;
         }
         
@@ -278,34 +278,34 @@
         })
           .then(response => {
             if (!response.ok) {
-              throw new Error('Xóa firmware thất bại');
+              throw new Error('Delete firmware failed' + (response.statusText ? `: ${response.statusText}` : ''));
             }
             return response.json();
           })
           .then(data => {
-            alert('Xóa firmware thành công!');
+            alert('Delete firmware successful!');
             checkCurrentFirmware();
             loadFirmwareHistory();
           })
           .catch(error => {
-            alert(`Lỗi: ${error.message}`);
+            alert(`Error: ${error.message}`);
           });
       }
 
-      // Load dữ liệu ban đầu
+      // Load initial data
       checkCurrentFirmware();
 
-      // Hàm lấy và hiển thị lịch sử firmware
+      // Function to get and display firmware history
       function loadFirmwareHistory() {
         fetch('/api/firmware/history')
           .then(response => {
-            if (!response.ok) throw new Error('Không thể tải lịch sử firmware');
+            if (!response.ok) throw new Error('Unable to load firmware history');
             return response.json();
           })
           .then(data => {
             const tbody = document.getElementById('firmwareHistory');
             if (!data.length) {
-              tbody.innerHTML = `<tr><td colspan="5" class="text-center">Chưa có lịch sử firmware</td></tr>`;
+              tbody.innerHTML = `<tr><td colspan="5" class="text-center">No firmware history available</td></tr>`;
               return;
             }
             tbody.innerHTML = data.map(item => `
