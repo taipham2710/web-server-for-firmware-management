@@ -14,7 +14,17 @@ const logger = require('./logger'); // Import the logger
 // Load environment variables
 require('dotenv').config();
 
-const db = new sqlite3.Database(process.env.DATABASE_PATH || './firmware.db');
+// Define the data directory, configurable via environment variable
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname);
+const FIRMWARE_DIR = path.join(DATA_DIR, 'firmware');
+const DB_PATH = path.join(DATA_DIR, 'firmware.db');
+
+// Ensure data directories exist
+if (!fs.existsSync(FIRMWARE_DIR)) {
+  fs.mkdirSync(FIRMWARE_DIR, { recursive: true });
+}
+
+const db = new sqlite3.Database(DB_PATH);
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -118,11 +128,7 @@ const calculateChecksum = (filePath) => {
 // Setup storage for multer to upload firmware
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const dir = path.join(__dirname, 'firmware');
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    cb(null, dir);
+    cb(null, FIRMWARE_DIR);
   },
   filename: (req, file, cb) => {
     // Create file name based on version and device type
@@ -284,8 +290,7 @@ app.get('/api/firmware/download', (req, res) => {
     // Remove 'v' prefix if present
     const cleanVersion = version.replace(/^v/, '');
     
-    const firmwareDir = path.join(__dirname, 'firmware');
-    const firmwarePath = path.join(firmwareDir, `${device}-firmware-v${cleanVersion}.bin`);
+    const firmwarePath = path.join(FIRMWARE_DIR, `${device}-firmware-v${cleanVersion}.bin`);
     
     if (!fs.existsSync(firmwarePath)) {
       return res.status(404).json({ error: 'Firmware not found for the requested version and device' });
@@ -460,7 +465,7 @@ app.delete('/api/firmware/:id', authenticateToken, (req, res) => {
       }
 
       // Delete the actual firmware file
-      const firmwarePath = path.join(__dirname, 'firmware', row.file_name);
+      const firmwarePath = path.join(FIRMWARE_DIR, row.file_name);
       if (fs.existsSync(firmwarePath)) {
         fs.unlinkSync(firmwarePath);
         logger.info(`Firmware file deleted from filesystem: ${row.file_name}`);
