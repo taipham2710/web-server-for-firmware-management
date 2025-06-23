@@ -183,7 +183,7 @@
             // Re-attach events
             document.getElementById('checkFirmwareBtn').addEventListener('click', checkCurrentFirmware);
             document.getElementById('deleteFirmwareBtn').addEventListener('click', () => {
-                deleteFirmware(data.version, data.device);
+                deleteFirmwareById(data.id);
             });
           })
           .catch(error => {
@@ -289,13 +289,13 @@
           });
       });
 
-      // Add function to delete firmware
-      function deleteFirmware(version, device) {
-        if (!confirm(`Are you sure you want to delete firmware version ${version} for ${device}?`)) {
+      // Function to delete firmware by its unique ID
+      function deleteFirmwareById(id) {
+        if (!confirm(`Are you sure you want to delete firmware with ID ${id}? This action cannot be undone.`)) {
           return;
         }
         
-        fetch(`/api/firmware/${version}?device=${device}`, {
+        fetch(`/api/firmware/${id}`, {
           method: 'DELETE',
           headers: getAuthHeaders()
         })
@@ -308,6 +308,7 @@
           })
           .then(data => {
             alert('Delete firmware successful!');
+            // Reload both the current firmware info and the history table
             checkCurrentFirmware();
             loadFirmwareHistory();
           })
@@ -339,11 +340,20 @@
                 <td>${item.device}</td>
                 <td>${new Date(item.upload_date).toLocaleString()}</td>
                 <td style="max-width: 300px; word-wrap: break-word;">${item.notes || ''}</td>
-                <td>
+                <td class="action-buttons">
                   <a href="/api/firmware/download?device=${item.device}&version=v${item.version}" class="btn btn-sm btn-outline-primary">Download</a>
+                  <button class="btn btn-sm btn-danger" data-id="${item.id}">Delete</button>
                 </td>
               </tr>
             `).join('');
+
+            // Add event listeners to all new delete buttons in the history table
+            tbody.querySelectorAll('button.btn-danger').forEach(button => {
+              button.addEventListener('click', (event) => {
+                const id = event.target.dataset.id;
+                deleteFirmwareById(id);
+              });
+            });
           })
           .catch(error => {
             document.getElementById('firmwareHistory').innerHTML = `
