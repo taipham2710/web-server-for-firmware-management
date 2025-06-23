@@ -114,7 +114,9 @@ app.get('/api/firmware/version', (req, res) => {
 
       // Format for ESP32
       const versionData = {
+        id: row.id,
         version: `v${row.version}`,
+        device: row.device,
         url: `${req.protocol}://${req.get('host')}/api/firmware/download?device=${device}&version=v${row.version}`,
         checksum: row.checksum || 'unknown',
         notes: row.notes || '',
@@ -233,31 +235,43 @@ app.get('/api/firmware/history', authenticateToken, (req, res) => {
 });
 
 // Route to delete firmware and associated data (authentication required)
-app.delete('/api/firmware/:version', authenticateToken, (req, res) => {
+app.delete('/api/firmware/:id', authenticateToken, (req, res) => {
   try {
-    const version = req.params.version;
-    const device = req.query.device || 'esp32';
+    const { id } = req.params;
 
-    // Remove 'v' prefix if present
-    const cleanVersion = version.replace(/^v/, '');
-
-    // Delete firmware file
-    const firmwarePath = path.join(__dirname, 'firmware', `${device}-firmware-v${cleanVersion}.bin`);
-    if (fs.existsSync(firmwarePath)) {
-      fs.unlinkSync(firmwarePath);
+    if (!id) {
+      return res.status(400).json({ error: 'Firmware ID is required' });
     }
 
-    // Delete data from database
-    db.run('DELETE FROM firmware_versions WHERE version = ? AND device = ?', [cleanVersion, device], function(err) {
+    // First, get the file name from the database to delete it from the file system
+    db.get('SELECT file_name, version, device FROM firmware_versions WHERE id = ?', [id], (err, row) => {
       if (err) {
-        return res.status(500).json({ error: 'Database deletion error' });
+        return res.status(500).json({ error: 'Database query error while finding firmware' });
       }
-      
-      console.log(`Firmware deleted: ${device}-firmware-v${cleanVersion}.bin`);
-      
-      res.json({
-        success: true,
-        message: 'Firmware and associated data deleted successfully'
+
+      if (!row) {
+        return res.status(404).json({ error: 'Firmware not found with the given ID' });
+      }
+
+      // Delete the actual firmware file
+      const firmwarePath = path.join(__dirname, 'firmware', row.file_name);
+      if (fs.existsSync(firmwarePath)) {
+        fs.unlinkSync(firmwarePath);
+        console.log(`Firmware file deleted: ${row.file_name}`);
+      }
+
+      // Now, delete the record from the database
+      db.run('DELETE FROM firmware_versions WHERE id = ?', [id], function(err) {
+        if (err) {
+          return res.status(500).json({ error: 'Database deletion error' });
+        }
+        
+        console.log(`Firmware record deleted: ID ${id}, Version ${row.version}, Device ${row.device}`);
+        
+        res.json({
+          success: true,
+          message: 'Firmware and associated data deleted successfully'
+        });
       });
     });
   } catch (error) {
