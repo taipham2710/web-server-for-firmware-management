@@ -121,9 +121,42 @@ cp env.example .env
 ```
 
 ### 3. Chạy server
+
+#### Development Mode
 ```bash
 node server.js
 ```
+
+#### Production Mode với PM2 (Khuyến nghị)
+```bash
+# Cài đặt PM2 globally
+npm install -g pm2
+
+# Khởi động server với PM2
+npm run pm2:start
+
+# Kiểm tra trạng thái
+npm run pm2:status
+
+# Xem logs real-time
+npm run pm2:logs
+
+# Monitoring dashboard
+npm run pm2:monit
+
+# Restart server
+npm run pm2:restart
+
+# Dừng server
+npm run pm2:stop
+```
+
+**Lợi ích của PM2:**
+- ✅ Tự động khởi động lại khi gặp lỗi
+- ✅ Quản lý log tập trung
+- ✅ Monitoring hiệu suất real-time
+- ✅ Zero-downtime deployment
+- ✅ Process management chuyên nghiệp
 
 Server sẽ chạy tại `http://localhost:3000`
 

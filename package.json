@@ -3,6 +3,15 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "pm2:start": "pm2 start ecosystem.config.js",
+    "pm2:stop": "pm2 stop ota-firmware-server",
+    "pm2:restart": "pm2 restart ota-firmware-server",
+    "pm2:delete": "pm2 delete ota-firmware-server",
+    "pm2:logs": "pm2 logs ota-firmware-server",
+    "pm2:monit": "pm2 monit",
+    "pm2:status": "pm2 status",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
