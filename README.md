@@ -169,6 +169,47 @@ npm run pm2:stop
 
 Server sẽ chạy tại `http://localhost:3000`
 
+## 🐳 Docker & Kubernetes Deployment
+
+Ứng dụng này đã sẵn sàng để được đóng gói và triển khai trên các nền tảng container như Docker và Kubernetes (K3s).
+
+### 1. Build Docker Image
+
+Từ thư mục gốc của dự án, chạy lệnh sau:
+
+```bash
+docker build -t your-username/ota-server:latest .
+```
+*(Thay `your-username` bằng Docker Hub username của bạn)*
+
+### 2. Chạy với Docker
+
+Để chạy thử image vừa build:
+```bash
+docker run -p 3000:3000 \
+  -v $(pwd)/data:/app/data \
+  --env-file ./.env \
+  -e "DATA_DIR=/app/data" \
+  --name ota-server-container \
+  your-username/ota-server:latest
+```
+
+Lệnh này sẽ:
+- `-p 3000:3000`: Ánh xạ cổng 3000 của máy bạn vào cổng 3000 của container.
+- `-v $(pwd)/data:/app/data`: Mount thư mục `data` ở máy bạn vào thư mục `/app/data` trong container để lưu trữ dữ liệu.
+- `--env-file ./.env`: Tải các biến môi trường từ file `.env`.
+- `-e "DATA_DIR=/app/data"`: Ghi đè biến `DATA_DIR` để trỏ vào volume đã mount.
+
+### 3. Triển khai lên Kubernetes (K3s)
+
+Việc triển khai lên K3s sẽ yêu cầu các file manifest (Deployment, Service, PersistentVolumeClaim, Ingress). Các file này cần được tạo riêng tùy theo cấu hình cluster của bạn.
+
+**Điểm mấu chốt khi cấu hình manifest:**
+- **Deployment**: Trỏ tới Docker image bạn đã build và push lên registry.
+- **Environment Variables**: Sử dụng `ConfigMap` và `Secret` để cung cấp biến môi trường cho pod.
+- **Persistent Storage**: Tạo `PersistentVolumeClaim` và mount nó vào đường dẫn `/app/data` của container.
+- **Service & Ingress**: Tạo `Service` loại `ClusterIP` và `Ingress` để expose ứng dụng ra bên ngoài.
+
 ## 🔧 Cấu hình CI/CD
 
 ### GitHub Actions Example
