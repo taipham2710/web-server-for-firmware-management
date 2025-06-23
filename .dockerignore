@@ -1,0 +1,30 @@
+# Git files
+.git
+.gitignore
+
+# Node modules - we install these inside the container
+node_modules
+
+# Logs
+logs
+*.log
+
+# Sensitive environment files
+.env
+
+# Local database and firmware files
+# These should be managed by a Persistent Volume in Kubernetes
+firmware.db
+firmware/
+
+# Temporary / OS-specific files
+.DS_Store
+Thumbs.db
+
+# Development specific files
+ecosystem.config.js
+test-firmware.bin
+
+# Docker files
+Dockerfile
+.dockerignore 
