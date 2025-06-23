@@ -13,6 +13,21 @@
       <p class="text-center text-muted">Manage and update firmware for ESP32, ESP8266 devices</p>
     </div>
 
+    <!-- API Token Configuration -->
+    <div class="card mb-4">
+      <div class="card-header">
+        <h5>API Configuration</h5>
+      </div>
+      <div class="card-body">
+        <label for="apiToken" class="form-label">API Token</label>
+        <div class="input-group">
+          <input type="password" class="form-control" id="apiToken" placeholder="Enter your API token for management">
+          <button class="btn btn-outline-secondary" type="button" id="saveToken">Save</button>
+        </div>
+        <div class="form-text">Your token is stored in the browser's local storage.</div>
+      </div>
+    </div>
+
     <div class="row">
       <!-- Current firmware information -->
       <div class="col-md-6">
@@ -45,6 +60,7 @@
                 <select class="form-select" id="deviceType" name="device">
                   <option value="esp32" selected>ESP32</option>
                   <option value="esp8266">ESP8266</option>
+                  <!-- Add other device types here if needed -->
                 </select>
               </div>
               <div class="mb-3">
@@ -77,45 +93,22 @@
             <h5>Firmware Version History</h5>
           </div>
           <div class="card-body">
-            <table class="table table-striped">
-              <thead>
-                <tr>
-                  <th>Version</th>
-                  <th>Device Type</th>
-                  <th>Upload Date</th>
-                  <th>Notes</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="firmwareHistory">
-                <tr>
-                  <td colspan="5" class="text-center">Loading data...</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- GitHub Webhook Configuration -->
-    <div class="row mt-4">
-      <div class="col-12">
-        <div class="card">
-          <div class="card-header">
-            <h5>GitHub Webhook Configuration</h5>
-          </div>
-          <div class="card-body">
-            <p>To integrate automatically with GitHub, add a webhook with the following URL to your repository:</p>
-            <div class="input-group mb-3">
-              <input type="text" class="form-control" id="webhookUrl" readonly>
-              <button class="btn btn-outline-secondary" type="button" id="copyWebhook">Copy</button>
+            <div class="table-responsive">
+              <table class="table table-striped">
+                <thead>
+                  <tr>
+                    <th>Version</th>
+                    <th>Device Type</th>
+                    <th>Upload Date</th>
+                    <th>Notes</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="firmwareHistory">
+                  <!-- History rows will be inserted here -->
+                </tbody>
+              </table>
             </div>
-            <p>Webhook Configuration:</p>
-            <ul>
-              <li>Content type: <code>application/json</code></li>
-              <li>Events: <code>Push</code></li>
-            </ul>
           </div>
         </div>
       </div>
@@ -124,28 +117,43 @@
 
   <script>
     document.addEventListener('DOMContentLoaded', function() {
-      // Điền URL webhook
-      const webhookUrl = `${window.location.origin}/api/github/webhook`;
-      document.getElementById('webhookUrl').value = webhookUrl;
+      const apiTokenInput = document.getElementById('apiToken');
+      const saveTokenButton = document.getElementById('saveToken');
 
-      // Xử lý nút sao chép webhook URL
-      document.getElementById('copyWebhook').addEventListener('click', function() {
-        const webhookUrlInput = document.getElementById('webhookUrl');
-        webhookUrlInput.select();
-        document.execCommand('copy');
-        this.textContent = 'Copied!';
-        setTimeout(() => {
-          this.textContent = 'Copy';
-        }, 2000);
+      // Load token from localStorage
+      apiTokenInput.value = localStorage.getItem('apiToken') || '';
+
+      // Save token to localStorage
+      saveTokenButton.addEventListener('click', () => {
+        const token = apiTokenInput.value;
+        if (token) {
+          localStorage.setItem('apiToken', token);
+          alert('API Token saved!');
+          // Reload data with the new token
+          checkCurrentFirmware();
+          loadFirmwareHistory();
+        } else {
+          alert('Please enter an API Token.');
+        }
       });
+      
+      function getAuthHeaders(tokenType = 'api') {
+        const token = localStorage.getItem('apiToken');
+        if (!token) {
+          console.error('API Token is not set.');
+          // You might want to visually indicate this on the UI
+        }
+        return {
+          'Authorization': `Bearer ${token}`
+        };
+      }
 
       // Check current firmware
       function checkCurrentFirmware() {
-        fetch('/api/firmware/version')
+        fetch('/api/firmware/version', { headers: getAuthHeaders() })
           .then(response => {
-            if (!response.ok) {
-              throw new Error('Unable to load firmware information');
-            }
+            if (response.status === 401 || response.status === 403) throw new Error('Authentication failed. Check your API Token.');
+            if (!response.ok) throw new Error('No firmware found or server error.');
             return response.json();
           })
           .then(data => {
@@ -154,32 +162,38 @@
                 <dt class="col-sm-4">Current Version:</dt>
                 <dd class="col-sm-8">${data.version}</dd>
                 <dt class="col-sm-4">Device Type:</dt>
-                <dd class="col-sm-8">${data.device}</dd>
+                <dd class="col-sm-8">${data.device || 'N/A'}</dd>
                 <dt class="col-sm-4">Upload Date:</dt>
                 <dd class="col-sm-8">${new Date(data.uploadDate).toLocaleString()}</dd>
                 <dt class="col-sm-4">Notes:</dt>
                 <dd class="col-sm-8">${data.notes || 'N/A'}</dd>
+                <dt class="col-sm-4">Checksum (MD5):</dt>
+                <dd class="col-sm-8"><code>${data.checksum}</code></dd>
               </dl>
               <div class="d-flex gap-2">
                 <a href="/api/firmware/download?device=${data.device}&version=${data.version}" 
                   class="btn btn-outline-primary btn-sm">Download Firmware</a>
-                <button id="checkFirmware" class="btn btn-primary btn-sm">Check Again</button>
-                <button id="deleteFirmware" class="btn btn-danger btn-sm" 
-                  onclick="deleteFirmware('${data.version}', '${data.device}')">Delete Firmware</button>
+                <button id="checkFirmwareBtn" class="btn btn-primary btn-sm">Check Again</button>
+                <button id="deleteFirmwareBtn" class="btn btn-danger btn-sm">Delete Firmware</button>
               </div>
             `;
             
             document.getElementById('currentFirmware').innerHTML = firmwareInfo;
 
-            // Re-attach event for Check Again button
-            document.getElementById('checkFirmware').addEventListener('click', checkCurrentFirmware);
+            // Re-attach events
+            document.getElementById('checkFirmwareBtn').addEventListener('click', checkCurrentFirmware);
+            document.getElementById('deleteFirmwareBtn').addEventListener('click', () => {
+                deleteFirmware(data.version, data.device);
+            });
           })
           .catch(error => {
             document.getElementById('currentFirmware').innerHTML = `
               <div class="alert alert-warning">
                 ${error.message}
               </div>
+              <button id="checkFirmwareBtn" class="btn btn-primary btn-sm">Check Again</button>
             `;
+            document.getElementById('checkFirmwareBtn').addEventListener('click', checkCurrentFirmware);
           });
       }
 
@@ -245,13 +259,21 @@
           return;
         }
         
+        const headers = getAuthHeaders();
+        // The fetch call needs a multipart/form-data header, which is set automatically by the browser
+        // when using FormData, but we need to merge our auth headers without setting Content-Type.
+        // So we create a new Headers object.
+        const requestHeaders = new Headers(headers);
+        
         fetch('/api/firmware/upload', {
           method: 'POST',
-          body: formData
+          body: formData,
+          headers: requestHeaders
         })
           .then(response => {
+            if (response.status === 401 || response.status === 403) throw new Error('Upload failed. Check your API Token.');
             if (!response.ok) {
-              throw new Error('Upload failed');
+              return response.json().then(err => { throw new Error(err.error || 'Upload failed') });
             }
             return response.json();
           })
@@ -269,16 +291,18 @@
 
       // Add function to delete firmware
       function deleteFirmware(version, device) {
-        if (!confirm('Are you sure you want to delete this firmware?')) {
+        if (!confirm(`Are you sure you want to delete firmware version ${version} for ${device}?`)) {
           return;
         }
         
         fetch(`/api/firmware/${version}?device=${device}`, {
-          method: 'DELETE'
+          method: 'DELETE',
+          headers: getAuthHeaders()
         })
           .then(response => {
+            if (response.status === 401 || response.status === 403) throw new Error('Delete failed. Check your API Token.');
             if (!response.ok) {
-              throw new Error('Delete firmware failed' + (response.statusText ? `: ${response.statusText}` : ''));
+              return response.json().then(err => { throw new Error(err.error || 'Delete failed') });
             }
             return response.json();
           })
@@ -297,8 +321,9 @@
 
       // Function to get and display firmware history
       function loadFirmwareHistory() {
-        fetch('/api/firmware/history')
+        fetch('/api/firmware/history', { headers: getAuthHeaders() })
           .then(response => {
+            if (response.status === 401 || response.status === 403) throw new Error('Authentication failed. Check your API Token.');
             if (!response.ok) throw new Error('Unable to load firmware history');
             return response.json();
           })
@@ -313,9 +338,9 @@
                 <td>${item.version}</td>
                 <td>${item.device}</td>
                 <td>${new Date(item.upload_date).toLocaleString()}</td>
-                <td>${item.notes || ''}</td>
+                <td style="max-width: 300px; word-wrap: break-word;">${item.notes || ''}</td>
                 <td>
-                  <a href="/api/firmware/download?device=${item.device}&version=${item.version}" class="btn btn-sm btn-outline-primary">Tải xuống</a>
+                  <a href="/api/firmware/download?device=${item.device}&version=v${item.version}" class="btn btn-sm btn-outline-primary">Download</a>
                 </td>
               </tr>
             `).join('');
