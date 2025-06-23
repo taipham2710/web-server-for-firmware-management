@@ -490,6 +490,22 @@
               <tr><td colspan="6" class="text-center text-danger">${error.message}</td></tr>
             `;
           });
+
+        // Sau khi loadUpdateLogs xong, thêm nút reset zoom nếu chưa có
+        if (!document.getElementById('resetLatencyZoomBtn')) {
+          const btn = document.createElement('button');
+          btn.id = 'resetLatencyZoomBtn';
+          btn.className = 'btn btn-outline-secondary btn-sm';
+          btn.innerText = 'Reset Zoom';
+          btn.style.margin = '8px 0 16px 0';
+          const chartDiv = document.getElementById('otaLatencyChart').parentElement;
+          chartDiv.insertBefore(btn, chartDiv.firstChild);
+          btn.addEventListener('click', function() {
+            if (window.otaLatencyChartObj) {
+              window.otaLatencyChartObj.resetZoom();
+            }
+          });
+        }
       }
 
       // Hàm fetch và render Device Status
@@ -589,7 +605,15 @@
               title: { display: true, text: 'OTA Latency' },
               zoom: {
                 pan: { enabled: true, mode: 'xy' },
-                zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'xy' }
+                zoom: {
+                  wheel: { enabled: true, speed: 0.03 }, // giảm tốc độ zoom
+                  pinch: { enabled: true },
+                  mode: 'xy',
+                  limits: {
+                    y: { min: 0, max: 20000 }, // latency tối đa 20,000ms
+                    x: { minRange: 3 }
+                  }
+                }
               }
             },
             scales: { y: { beginAtZero: true } }
