@@ -31,7 +31,7 @@
     <div class="row">
       <!-- Current firmware information -->
       <div class="col-md-6">
-        <div class="card">
+        <div class="card h-100">
           <div class="card-header">
             <h5>Current Firmware Information</h5>
           </div>
@@ -45,7 +45,7 @@
 
       <!-- Upload new firmware -->
       <div class="col-md-6">
-        <div class="card">
+        <div class="card h-100">
           <div class="card-header">
             <h5>Upload New Firmware</h5>
           </div>
@@ -85,6 +85,35 @@
       </div>
     </div>
 
+    <!-- Device Update Logs -->
+    <div class="row mt-4">
+      <div class="col-12">
+        <div class="card">
+          <div class="card-header">
+            <h5>Device Update Logs</h5>
+          </div>
+          <div class="card-body">
+            <div class="table-responsive">
+              <table class="table table-striped">
+                <thead>
+                  <tr>
+                    <th>Device ID</th>
+                    <th>Status</th>
+                    <th>Version</th>
+                    <th>Timestamp</th>
+                    <th>Error Message</th>
+                  </tr>
+                </thead>
+                <tbody id="updateLogsHistory">
+                  <!-- Log rows will be inserted here -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Firmware update history -->
     <div class="row mt-4">
       <div class="col-12">
@@ -113,6 +142,25 @@
         </div>
       </div>
     </div>
+  </div>
+
+  <!-- Floating Action Buttons -->
+  <div class="floating-actions">
+    <a href="#" id="exportFirmwareCsv" class="fab-item fab-success" data-tooltip="Export Firmware History (CSV)">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+      </svg>
+    </a>
+    <a href="#" id="exportLogsCsv" class="fab-item fab-info" data-tooltip="Export Update Logs (CSV)">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M10.125 2.25h-4.5c-1.125 0-2.25.9-2.25 2.25v15c0 1.35 1.125 2.25 2.25 2.25h13.5c1.125 0 2.25-.9 2.25-2.25v-15c0-1.35-1.125-2.25-2.25-2.25h-4.5m-7.5 12h7.5" />
+      </svg>
+    </a>
+    <a href="/api-docs" target="_blank" class="fab-item fab-secondary" data-tooltip="View API Docs (Swagger)">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" />
+      </svg>
+    </a>
   </div>
 
   <script>
@@ -319,6 +367,8 @@
 
       // Load initial data
       checkCurrentFirmware();
+      loadFirmwareHistory();
+      loadUpdateLogs(); // Load update logs
 
       // Function to get and display firmware history
       function loadFirmwareHistory() {
@@ -362,7 +412,79 @@
           });
       }
 
-      loadFirmwareHistory();
+      // Function to get and display update logs
+      function loadUpdateLogs() {
+        fetch('/api/logs', { headers: getAuthHeaders() })
+          .then(response => {
+            if (response.status === 401 || response.status === 403) throw new Error('Authentication failed. Check your API Token.');
+            if (!response.ok) throw new Error('Unable to load update logs');
+            return response.json();
+          })
+          .then(data => {
+            const tbody = document.getElementById('updateLogsHistory');
+            if (!data.length) {
+              tbody.innerHTML = `<tr><td colspan="5" class="text-center">No update logs available</td></tr>`;
+              return;
+            }
+            tbody.innerHTML = data.map(log => `
+              <tr>
+                <td>${log.device_id}</td>
+                <td><span class="badge ${log.status === 'update_success' ? 'bg-success' : 'bg-danger'}">${log.status}</span></td>
+                <td>${log.version}</td>
+                <td>${new Date(log.timestamp).toLocaleString()}</td>
+                <td class="text-danger">${log.error_message || ''}</td>
+              </tr>
+            `).join('');
+          })
+          .catch(error => {
+            document.getElementById('updateLogsHistory').innerHTML = `
+              <tr><td colspan="5" class="text-center text-danger">${error.message}</td></tr>
+            `;
+          });
+      }
+      
+      // Function to handle CSV export
+      function exportCsv(url, defaultFileName) {
+          fetch(url, { headers: getAuthHeaders() })
+              .then(response => {
+                  if (!response.ok) {
+                      throw new Error(`Export failed: ${response.statusText}`);
+                  }
+                  // Get filename from Content-Disposition header if available
+                  const disposition = response.headers.get('Content-Disposition');
+                  let filename = defaultFileName;
+                  if (disposition && disposition.indexOf('attachment') !== -1) {
+                      const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
+                      const matches = filenameRegex.exec(disposition);
+                      if (matches != null && matches[1]) {
+                          filename = matches[1].replace(/['"]/g, '');
+                      }
+                  }
+                  return response.blob().then(blob => ({ blob, filename }));
+              })
+              .then(({ blob, filename }) => {
+                  const link = document.createElement('a');
+                  link.href = window.URL.createObjectURL(blob);
+                  link.download = filename;
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                  alert('Export successful!');
+              })
+              .catch(error => {
+                  alert(`Error: ${error.message}`);
+              });
+      }
+
+      document.getElementById('exportFirmwareCsv').addEventListener('click', (e) => {
+          e.preventDefault();
+          exportCsv('/api/export/firmware', 'firmware_history.csv');
+      });
+
+      document.getElementById('exportLogsCsv').addEventListener('click', (e) => {
+          e.preventDefault();
+          exportCsv('/api/export/logs', 'update_logs.csv');
+      });
     });
   </script>
 </body>
