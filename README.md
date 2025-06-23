@@ -10,6 +10,9 @@ Web server để quản lý và phân phối firmware cho ESP32 thông qua OTA (
 - **Authentication**: Bảo mật API với token
 - **Logging**: Theo dõi quá trình update của ESP32
 - **Web UI**: Giao diện quản lý trực quan
+- **Rate Limiting**: Bảo vệ chống spam và abuse
+- **CSV Export**: Xuất dữ liệu ra file CSV
+- **API Documentation**: Swagger UI documentation
 
 ## 🔐 Authentication
 
@@ -106,6 +109,12 @@ Xóa firmware (cần `API_TOKEN`).
 
 #### `GET /api/logs`
 Lấy logs update (cần `API_TOKEN`).
+
+#### `GET /api/export/firmware`
+Export danh sách firmware ra CSV (cần `API_TOKEN`).
+
+#### `GET /api/export/logs`
+Export logs ra CSV (cần `API_TOKEN`).
 
 ## 🛠️ Cài đặt và Chạy
 
@@ -237,6 +246,7 @@ Response:
 - **File Validation**: Chỉ chấp nhận file .bin
 - **File Size Limit**: Giới hạn 10MB
 - **CORS**: Chỉ cho phép origin được cấu hình
+- **Rate Limiting**: Giới hạn 100 requests/15 phút, 10 uploads/giờ
 
 ## 📝 Logs
 
@@ -255,3 +265,33 @@ ESP32 cần implement logic OTA để:
 4. Verify checksum
 5. Thực hiện OTA update
 6. Báo cáo kết quả qua `POST /api/log`
+
+## 📚 API Documentation
+
+Server cung cấp Swagger UI documentation tại:
+
+```
+http://localhost:3000/api-docs
+```
+
+Tại đây bạn có thể:
+- Xem tất cả API endpoints
+- Test API trực tiếp
+- Xem schema và examples
+- Tìm hiểu parameters và responses
+
+## 📊 Export Data
+
+### Export Firmware Versions
+```bash
+curl -H "Authorization: Bearer your_token" \
+  http://localhost:3000/api/export/firmware \
+  -o firmware_versions.csv
+```
+
+### Export Update Logs
+```bash
+curl -H "Authorization: Bearer your_token" \
+  "http://localhost:3000/api/export/logs?limit=1000" \
+  -o update_logs.csv
+```
