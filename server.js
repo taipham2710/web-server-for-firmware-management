@@ -409,18 +409,18 @@ app.post('/api/firmware/upload', uploadLimiter, authenticateToken, upload.single
 // Route for ESP32 to report update results
 app.post('/api/log', (req, res) => {
   try {
-    const { device_id, status, version, error_message } = req.body;
+    const { device_id, status, version, error_message, latency_ms } = req.body;
     
     if (!device_id || !status || !version) {
       return res.status(400).json({ error: 'Missing required information' });
     }
 
     // Save log to database
-    const stmt = db.prepare(`INSERT INTO update_logs (device_id, status, version, error_message, timestamp) VALUES (?, ?, ?, ?, ?)`);
-    stmt.run(device_id, status, version, error_message || null, new Date().toISOString());
+    const stmt = db.prepare(`INSERT INTO update_logs (device_id, status, version, error_message, timestamp, latency_ms) VALUES (?, ?, ?, ?, ?, ?)`);
+    stmt.run(device_id, status, version, error_message || null, new Date().toISOString(), latency_ms || null);
     stmt.finalize();
     
-    logger.info(`Update log received from device ${device_id}`, { status, version });
+    logger.info(`Update log received from device ${device_id}`, { status, version, latency_ms });
     
     res.json({
       success: true,
@@ -623,10 +623,11 @@ app.get('/api/export/logs', authenticateToken, (req, res) => {
         Status: row.status,
         Version: row.version,
         ErrorMessage: row.error_message || '',
-        Timestamp: new Date(row.timestamp).toLocaleString()
+        Timestamp: new Date(row.timestamp).toLocaleString(),
+        Latency: row.latency_ms || ''
       }));
 
-      const fields = ['ID', 'DeviceID', 'Status', 'Version', 'ErrorMessage', 'Timestamp'];
+      const fields = ['ID', 'DeviceID', 'Status', 'Version', 'ErrorMessage', 'Timestamp', 'Latency'];
       const parser = new Parser({ fields });
       const csv = parser.parse(csvData);
 
@@ -689,8 +690,43 @@ db.serialize(() => {
     status TEXT NOT NULL,
     version TEXT NOT NULL,
     error_message TEXT,
-    timestamp TEXT NOT NULL
+    timestamp TEXT NOT NULL,
+    latency_ms INTEGER
+  )`);
+  
+  // Device status table for heartbeat
+  db.run(`CREATE TABLE IF NOT EXISTS device_status (
+    device_id TEXT PRIMARY KEY,
+    last_seen TEXT,
+    status TEXT,
+    firmware_version TEXT
   )`);
   
   logger.info('✅ Database initialized successfully');
+});
+
+// Endpoint nhận heartbeat từ thiết bị
+app.post('/api/heartbeat', (req, res) => {
+  const { device_id, status, firmware_version } = req.body;
+  if (!device_id) return res.status(400).json({ error: 'Missing device_id' });
+
+  const now = new Date().toISOString();
+  db.run(
+    `INSERT INTO device_status (device_id, last_seen, status, firmware_version)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(device_id) DO UPDATE SET last_seen=excluded.last_seen, status=excluded.status, firmware_version=excluded.firmware_version`,
+    [device_id, now, status || 'online', firmware_version || null],
+    (err) => {
+      if (err) return res.status(500).json({ error: 'DB error' });
+      res.json({ success: true });
+    }
+  );
+});
+
+// Endpoint lấy danh sách thiết bị và trạng thái
+app.get('/api/devices', authenticateToken, (req, res) => {
+  db.all('SELECT * FROM device_status', [], (err, rows) => {
+    if (err) return res.status(500).json({ error: 'DB error' });
+    res.json(rows);
+  });
 });
