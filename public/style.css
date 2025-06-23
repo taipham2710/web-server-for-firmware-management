@@ -452,3 +452,41 @@ h5{
 .fab-secondary:hover {
   background-color: #565e64; /* Darker gray */
 }
+
+/* Chart.js canvas size fix */
+canvas {
+  max-width: 100%;
+  max-height: 320px;
+  margin: 0 auto 24px auto;
+  display: block;
+}
+
+/* --- Responsive Chart Full Width --- */
+.chart-full {
+  width: 100% !important;
+  max-width: 100vw;
+  min-height: 320px;
+  height: 320px;
+  margin-bottom: 32px;
+  display: block;
+}
+@media (max-width: 768px) {
+  .chart-full {
+    min-height: 200px;
+    height: 200px;
+  }
+}
+/* --- Table scroll for max 5 rows --- */
+.table-scroll-5 {
+  max-height: 320px;
+  overflow-y: auto;
+}
+.table-scroll-5 table {
+  margin-bottom: 0;
+}
+.table-scroll-5 thead th {
+  position: sticky;
+  top: 0;
+  background: #fff;
+  z-index: 2;
+}

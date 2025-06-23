@@ -5,12 +5,27 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>System Firmware Management ESP32, ESP8266</title>
   <link href="./style.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@^2.0.0"></script>
 </head>
 <body>
   <div class="container">
     <div class="header">
       <h1 class="text-center">System Firmware Management ESP32, ESP8266</h1>
       <p class="text-center text-muted">Manage and update firmware for ESP32, ESP8266 devices</p>
+    </div>
+
+    <!-- Biểu đồ thống kê -->
+    <div class="row mt-4">
+      <div class="col-12">
+        <canvas id="otaSuccessChart" class="chart-full"></canvas>
+      </div>
+      <div class="col-12">
+        <canvas id="otaLatencyChart" class="chart-full"></canvas>
+      </div>
+      <div class="col-12">
+        <canvas id="deviceOnlineChart" class="chart-full"></canvas>
+      </div>
     </div>
 
     <!-- API Token Configuration -->
@@ -93,7 +108,7 @@
             <h5>Device Update Logs</h5>
           </div>
           <div class="card-body">
-            <div class="table-responsive">
+            <div class="table-responsive table-scroll-5">
               <table class="table table-striped">
                 <thead>
                   <tr>
@@ -102,6 +117,7 @@
                     <th>Version</th>
                     <th>Timestamp</th>
                     <th>Error Message</th>
+                    <th>Latency (ms)</th>
                   </tr>
                 </thead>
                 <tbody id="updateLogsHistory">
@@ -122,7 +138,7 @@
             <h5>Firmware Version History</h5>
           </div>
           <div class="card-body">
-            <div class="table-responsive">
+            <div class="table-responsive table-scroll-5">
               <table class="table table-striped">
                 <thead>
                   <tr>
@@ -135,6 +151,34 @@
                 </thead>
                 <tbody id="firmwareHistory">
                   <!-- History rows will be inserted here -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Device Status Table -->
+    <div class="row mt-4">
+      <div class="col-12">
+        <div class="card">
+          <div class="card-header">
+            <h5>Device Status</h5>
+          </div>
+          <div class="card-body">
+            <div class="table-responsive table-scroll-5">
+              <table class="table table-striped">
+                <thead>
+                  <tr>
+                    <th>Device ID</th>
+                    <th>Firmware Version</th>
+                    <th>Last Seen</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="deviceStatusTable">
+                  <!-- Device status rows will be inserted here -->
                 </tbody>
               </table>
             </div>
@@ -368,7 +412,8 @@
       // Load initial data
       checkCurrentFirmware();
       loadFirmwareHistory();
-      loadUpdateLogs(); // Load update logs
+      loadUpdateLogs();
+      loadDeviceStatus();
 
       // Function to get and display firmware history
       function loadFirmwareHistory() {
@@ -423,7 +468,7 @@
           .then(data => {
             const tbody = document.getElementById('updateLogsHistory');
             if (!data.length) {
-              tbody.innerHTML = `<tr><td colspan="5" class="text-center">No update logs available</td></tr>`;
+              tbody.innerHTML = `<tr><td colspan="6" class="text-center">No update logs available</td></tr>`;
               return;
             }
             tbody.innerHTML = data.map(log => `
@@ -431,18 +476,162 @@
                 <td>${log.device_id}</td>
                 <td><span class="badge ${log.status === 'update_success' ? 'bg-success' : 'bg-danger'}">${log.status}</span></td>
                 <td>${log.version}</td>
-                <td>${new Date(log.timestamp).toLocaleString()}</td>
+                <td>${new Date(log.timestamp).toLocaleString()}</td>c
                 <td class="text-danger">${log.error_message || ''}</td>
+                <td>${log.latency_ms !== undefined && log.latency_ms !== null ? log.latency_ms : ''}</td>
               </tr>
             `).join('');
+            // Vẽ biểu đồ OTA success/fail và latency
+            renderOtaSuccessChart(data);
+            renderOtaLatencyChart(data);
           })
           .catch(error => {
             document.getElementById('updateLogsHistory').innerHTML = `
-              <tr><td colspan="5" class="text-center text-danger">${error.message}</td></tr>
+              <tr><td colspan="6" class="text-center text-danger">${error.message}</td></tr>
             `;
           });
       }
-      
+
+      // Hàm fetch và render Device Status
+      function loadDeviceStatus() {
+        fetch('/api/devices', { headers: getAuthHeaders() })
+          .then(response => {
+            if (response.status === 401 || response.status === 403) throw new Error('Authentication failed. Check your API Token.');
+            if (!response.ok) throw new Error('Unable to load device status');
+            return response.json();
+          })
+          .then(data => {
+            const tbody = document.getElementById('deviceStatusTable');
+            if (!data.length) {
+              tbody.innerHTML = `<tr><td colspan="4" class="text-center">No device status available</td></tr>`;
+              return;
+            }
+            const now = Date.now();
+            tbody.innerHTML = data.map(device => {
+              const lastSeen = new Date(device.last_seen);
+              const diffMin = (now - lastSeen.getTime()) / 60000;
+              let statusLabel = '';
+              if (diffMin < 10 && device.status === 'online') {
+                statusLabel = '<span class="badge bg-success">Online</span>';
+              } else if (device.status === 'error') {
+                statusLabel = '<span class="badge bg-danger">Error</span>';
+              } else {
+                statusLabel = '<span class="badge bg-secondary">Offline</span>';
+              }
+              return `
+                <tr>
+                  <td>${device.device_id}</td>
+                  <td>${device.firmware_version || ''}</td>
+                  <td>${lastSeen.toLocaleString()}</td>
+                  <td>${statusLabel}</td>
+                </tr>
+              `;
+            }).join('');
+            // Vẽ biểu đồ device online/offline
+            renderDeviceOnlineChart(data);
+          })
+          .catch(error => {
+            document.getElementById('deviceStatusTable').innerHTML = `
+              <tr><td colspan="4" class="text-center text-danger">${error.message}</td></tr>
+            `;
+          });
+      }
+
+      // Biểu đồ OTA success/fail
+      function renderOtaSuccessChart(logs) {
+        const success = logs.filter(l => l.status === 'update_success').length;
+        const failed = logs.filter(l => l.status !== 'update_success').length;
+        if (window.otaSuccessChartObj) window.otaSuccessChartObj.destroy();
+        window.otaSuccessChartObj = new Chart(document.getElementById('otaSuccessChart'), {
+          type: 'bar',
+          data: {
+            labels: ['Success', 'Failed'],
+            datasets: [{
+              label: 'OTA Update',
+              data: [success, failed],
+              backgroundColor: ['#198754', '#dc3545']
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { title: { display: true, text: 'OTA Success Rate' } },
+            scales: { x: { beginAtZero: true }, y: { beginAtZero: true } }
+          }
+        });
+      }
+
+      // Biểu đồ latency OTA
+      function renderOtaLatencyChart(logs) {
+        const latencyLogs = logs.filter(l => l.latency_ms !== undefined && l.latency_ms !== null);
+        // Hiển thị tối đa 30 log mới nhất
+        const recentLogs = latencyLogs.slice(0, 30);
+        const labels = recentLogs.map(l => l.device_id + ' ' + l.version);
+        const data = recentLogs.map(l => l.latency_ms);
+        if (window.otaLatencyChartObj) window.otaLatencyChartObj.destroy();
+        window.otaLatencyChartObj = new Chart(document.getElementById('otaLatencyChart'), {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: [{
+              label: 'Latency (ms)',
+              data: data,
+              backgroundColor: '#0dcaf0',
+              borderColor: '#0dcaf0',
+              fill: false,
+              tension: 0.3
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              title: { display: true, text: 'OTA Latency' },
+              zoom: {
+                pan: { enabled: true, mode: 'xy' },
+                zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'xy' }
+              }
+            },
+            scales: { y: { beginAtZero: true } }
+          }
+        });
+      }
+
+      // Biểu đồ device online/offline
+      function renderDeviceOnlineChart(devices) {
+        const online = devices.filter(d => {
+          const lastSeen = new Date(d.last_seen);
+          return ((Date.now() - lastSeen.getTime()) / 60000 < 10) && d.status === 'online';
+        }).length;
+        const offline = devices.length - online;
+        if (window.deviceOnlineChartObj) window.deviceOnlineChartObj.destroy();
+        window.deviceOnlineChartObj = new Chart(document.getElementById('deviceOnlineChart'), {
+          type: 'bar',
+          data: {
+            labels: ['Online', 'Offline'],
+            datasets: [{
+              label: 'Device Status',
+              data: [online, offline],
+              backgroundColor: ['#198754', '#6c757d']
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { title: { display: true, text: 'Device Online/Offline' } },
+            scales: {
+              y: {
+                beginAtZero: true,
+                ticks: {
+                  stepSize: 1,
+                  precision: 0
+                }
+              }
+            }
+          }
+        });
+      }
+
       // Function to handle CSV export
       function exportCsv(url, defaultFileName) {
           fetch(url, { headers: getAuthHeaders() })
