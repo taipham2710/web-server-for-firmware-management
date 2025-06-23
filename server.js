@@ -5,6 +5,10 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const sqlite3 = require('sqlite3').verbose();
+const rateLimit = require('express-rate-limit');
+const { Parser } = require('json2csv');
+const swaggerUi = require('swagger-ui-express');
+const swaggerSpecs = require('./swagger');
 const logger = require('./logger'); // Import the logger
 
 // Load environment variables
@@ -13,6 +17,45 @@ require('dotenv').config();
 const db = new sqlite3.Database(process.env.DATABASE_PATH || './firmware.db');
 const app = express();
 const port = process.env.PORT || 3000;
+
+// Rate Limiting Configuration
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+  message: {
+    error: 'Too many requests from this IP, please try again later.',
+    retryAfter: '15 minutes'
+  },
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  handler: (req, res) => {
+    logger.warn(`Rate limit exceeded for IP: ${req.ip}`);
+    res.status(429).json({
+      error: 'Too many requests from this IP, please try again later.',
+      retryAfter: '15 minutes'
+    });
+  }
+});
+
+// Apply rate limiting to all routes
+app.use(limiter);
+
+// Stricter rate limiting for upload endpoint
+const uploadLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 10, // limit each IP to 10 uploads per hour
+  message: {
+    error: 'Too many upload attempts, please try again later.',
+    retryAfter: '1 hour'
+  },
+  handler: (req, res) => {
+    logger.warn(`Upload rate limit exceeded for IP: ${req.ip}`);
+    res.status(429).json({
+      error: 'Too many upload attempts, please try again later.',
+      retryAfter: '1 hour'
+    });
+  }
+});
 
 // Middleware
 app.use(express.json());
@@ -103,6 +146,60 @@ const upload = multer({
   }
 });
 
+// Swagger Documentation
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs, {
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: 'OTA Firmware Management API Documentation'
+}));
+
+/**
+ * @swagger
+ * /api/firmware/version:
+ *   get:
+ *     summary: Lấy thông tin phiên bản firmware mới nhất
+ *     description: ESP32 sử dụng endpoint này để kiểm tra phiên bản mới nhất
+ *     tags: [Firmware]
+ *     parameters:
+ *       - in: query
+ *         name: device
+ *         schema:
+ *           type: string
+ *           default: esp32
+ *         description: Loại thiết bị (esp32, esp8266)
+ *     responses:
+ *       200:
+ *         description: Thông tin phiên bản mới nhất
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id:
+ *                   type: integer
+ *                   description: ID của firmware
+ *                 version:
+ *                   type: string
+ *                   example: "v1.0.3"
+ *                 device:
+ *                   type: string
+ *                   example: "esp32"
+ *                 url:
+ *                   type: string
+ *                   description: URL để tải firmware
+ *                 checksum:
+ *                   type: string
+ *                   description: MD5 checksum của file
+ *                 notes:
+ *                   type: string
+ *                   description: Ghi chú về phiên bản
+ *                 uploadDate:
+ *                   type: string
+ *                   format: date-time
+ *       404:
+ *         description: Không tìm thấy firmware cho thiết bị
+ *       500:
+ *         description: Lỗi server
+ */
 // Route to get the latest version information (ESP32 compatible format)
 app.get('/api/firmware/version', (req, res) => {
   try {
@@ -138,6 +235,42 @@ app.get('/api/firmware/version', (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/firmware/download:
+ *   get:
+ *     summary: Tải firmware về
+ *     description: ESP32 sử dụng endpoint này để tải firmware file
+ *     tags: [Firmware]
+ *     parameters:
+ *       - in: query
+ *         name: device
+ *         schema:
+ *           type: string
+ *           default: esp32
+ *         description: Loại thiết bị
+ *         required: true
+ *       - in: query
+ *         name: version
+ *         schema:
+ *           type: string
+ *         description: Phiên bản firmware (có thể có prefix 'v')
+ *         required: true
+ *     responses:
+ *       200:
+ *         description: File firmware được tải về
+ *         content:
+ *           application/octet-stream:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       400:
+ *         description: Thiếu thông tin version
+ *       404:
+ *         description: Không tìm thấy firmware
+ *       500:
+ *         description: Lỗi server
+ */
 // Route to download firmware
 app.get('/api/firmware/download', (req, res) => {
   try {
@@ -169,8 +302,71 @@ app.get('/api/firmware/download', (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/firmware/upload:
+ *   post:
+ *     summary: Upload firmware mới
+ *     description: Upload firmware mới lên server (cần authentication)
+ *     tags: [Firmware Management]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - firmware
+ *               - version
+ *             properties:
+ *               firmware:
+ *                 type: string
+ *                 format: binary
+ *                 description: File firmware (.bin)
+ *               version:
+ *                 type: string
+ *                 description: Phiên bản firmware
+ *                 example: "1.0.0"
+ *               device:
+ *                 type: string
+ *                 description: Loại thiết bị
+ *                 example: "esp32"
+ *               notes:
+ *                 type: string
+ *                 description: Ghi chú về phiên bản
+ *     responses:
+ *       200:
+ *         description: Upload thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 file:
+ *                   type: string
+ *                 version:
+ *                   type: string
+ *                 checksum:
+ *                   type: string
+ *       400:
+ *         description: Dữ liệu không hợp lệ
+ *       401:
+ *         description: Không có token
+ *       403:
+ *         description: Token không hợp lệ
+ *       429:
+ *         description: Quá nhiều request
+ *       500:
+ *         description: Lỗi server
+ */
 // Route to upload new firmware (authentication required)
-app.post('/api/firmware/upload', authenticateToken, upload.single('firmware'), (req, res) => {
+app.post('/api/firmware/upload', uploadLimiter, authenticateToken, upload.single('firmware'), (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
@@ -301,6 +497,145 @@ app.get('/api/logs', authenticateToken, (req, res) => {
     }
     res.json(rows);
   });
+});
+
+/**
+ * @swagger
+ * /api/export/firmware:
+ *   get:
+ *     summary: Export danh sách firmware ra CSV
+ *     description: Xuất tất cả firmware versions ra file CSV
+ *     tags: [Export]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: File CSV được tải về
+ *         content:
+ *           text/csv:
+ *             schema:
+ *               type: string
+ *       401:
+ *         description: Không có token
+ *       403:
+ *         description: Token không hợp lệ
+ *       404:
+ *         description: Không có dữ liệu để export
+ *       500:
+ *         description: Lỗi server
+ */
+// Route to export firmware versions as CSV (authentication required)
+app.get('/api/export/firmware', authenticateToken, (req, res) => {
+  try {
+    db.all('SELECT * FROM firmware_versions ORDER BY upload_date DESC', [], (err, rows) => {
+      if (err) {
+        logger.error('Database query error on firmware export', { error: err.message });
+        return res.status(500).json({ error: 'Database query error' });
+      }
+
+      if (!rows || rows.length === 0) {
+        return res.status(404).json({ error: 'No firmware data to export' });
+      }
+
+      // Transform data for CSV
+      const csvData = rows.map(row => ({
+        ID: row.id,
+        Version: row.version,
+        Device: row.device,
+        Notes: row.notes || '',
+        UploadDate: new Date(row.upload_date).toLocaleString(),
+        FileName: row.file_name,
+        Checksum: row.checksum || ''
+      }));
+
+      const fields = ['ID', 'Version', 'Device', 'Notes', 'UploadDate', 'FileName', 'Checksum'];
+      const parser = new Parser({ fields });
+      const csv = parser.parse(csvData);
+
+      // Set headers for CSV download
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="firmware_versions_${new Date().toISOString().split('T')[0]}.csv"`);
+      
+      logger.info('Firmware versions exported to CSV', { count: rows.length });
+      res.send(csv);
+    });
+  } catch (error) {
+    logger.error('Error exporting firmware CSV', { error: error.message });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/export/logs:
+ *   get:
+ *     summary: Export logs ra CSV
+ *     description: Xuất update logs ra file CSV
+ *     tags: [Export]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 1000
+ *         description: Số lượng log tối đa để export
+ *     responses:
+ *       200:
+ *         description: File CSV được tải về
+ *         content:
+ *           text/csv:
+ *             schema:
+ *               type: string
+ *       401:
+ *         description: Không có token
+ *       403:
+ *         description: Token không hợp lệ
+ *       404:
+ *         description: Không có dữ liệu để export
+ *       500:
+ *         description: Lỗi server
+ */
+// Route to export update logs as CSV (authentication required)
+app.get('/api/export/logs', authenticateToken, (req, res) => {
+  try {
+    const limit = req.query.limit || 1000;
+    db.all('SELECT * FROM update_logs ORDER BY timestamp DESC LIMIT ?', [limit], (err, rows) => {
+      if (err) {
+        logger.error('Database query error on logs export', { error: err.message });
+        return res.status(500).json({ error: 'Database query error' });
+      }
+
+      if (!rows || rows.length === 0) {
+        return res.status(404).json({ error: 'No log data to export' });
+      }
+
+      // Transform data for CSV
+      const csvData = rows.map(row => ({
+        ID: row.id,
+        DeviceID: row.device_id,
+        Status: row.status,
+        Version: row.version,
+        ErrorMessage: row.error_message || '',
+        Timestamp: new Date(row.timestamp).toLocaleString()
+      }));
+
+      const fields = ['ID', 'DeviceID', 'Status', 'Version', 'ErrorMessage', 'Timestamp'];
+      const parser = new Parser({ fields });
+      const csv = parser.parse(csvData);
+
+      // Set headers for CSV download
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="update_logs_${new Date().toISOString().split('T')[0]}.csv"`);
+      
+      logger.info('Update logs exported to CSV', { count: rows.length });
+      res.send(csv);
+    });
+  } catch (error) {
+    logger.error('Error exporting logs CSV', { error: error.message });
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // User interface
