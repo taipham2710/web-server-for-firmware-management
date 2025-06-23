@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const sqlite3 = require('sqlite3').verbose();
+const logger = require('./logger'); // Import the logger
 
 // Load environment variables
 require('dotenv').config();
@@ -17,6 +18,12 @@ const port = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static('public'));
+
+// Request Logging Middleware
+app.use((req, res, next) => {
+  logger.info(`${req.method} ${req.originalUrl}`, { ip: req.ip });
+  next();
+});
 
 // CORS middleware
 app.use((req, res, next) => {
@@ -104,7 +111,7 @@ app.get('/api/firmware/version', (req, res) => {
     // Get latest version from database
     db.get('SELECT * FROM firmware_versions WHERE device = ? ORDER BY upload_date DESC LIMIT 1', [device], (err, row) => {
       if (err) {
-        console.error('Database error:', err);
+        logger.error('Database error while fetching latest version', { error: err.message });
         return res.status(500).json({ error: 'Database error' });
       }
       
@@ -126,7 +133,7 @@ app.get('/api/firmware/version', (req, res) => {
       res.json(versionData);
     });
   } catch (error) {
-    console.error('Error getting version:', error);
+    logger.error('Error in /api/firmware/version route', { error: error.message });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -157,7 +164,7 @@ app.get('/api/firmware/download', (req, res) => {
     
     res.download(firmwarePath);
   } catch (error) {
-    console.error('Error downloading firmware:', error);
+    logger.error('Error downloading firmware', { error: error.message });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -183,7 +190,7 @@ app.post('/api/firmware/upload', authenticateToken, upload.single('firmware'), (
     stmt.run(version, device || 'esp32', notes || '', new Date().toISOString(), req.file.filename, checksum);
     stmt.finalize();
     
-    console.log(`Firmware uploaded: ${req.file.filename}, version: ${version}, checksum: ${checksum}`);
+    logger.info(`Firmware uploaded: ${req.file.filename}`, { version, device, checksum });
     
     res.json({
       success: true,
@@ -193,7 +200,7 @@ app.post('/api/firmware/upload', authenticateToken, upload.single('firmware'), (
       checksum: checksum
     });
   } catch (error) {
-    console.error('Error uploading firmware:', error);
+    logger.error('Error uploading firmware', { error: error.message, file: req.file });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -212,14 +219,14 @@ app.post('/api/log', (req, res) => {
     stmt.run(device_id, status, version, error_message || null, new Date().toISOString());
     stmt.finalize();
     
-    console.log(`Update log: Device ${device_id}, Status: ${status}, Version: ${version}`);
+    logger.info(`Update log received from device ${device_id}`, { status, version });
     
     res.json({
       success: true,
       message: 'Log recorded successfully'
     });
   } catch (error) {
-    console.error('Error recording log:', error);
+    logger.error('Error recording log', { error: error.message, body: req.body });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -228,6 +235,7 @@ app.post('/api/log', (req, res) => {
 app.get('/api/firmware/history', authenticateToken, (req, res) => {
   db.all('SELECT * FROM firmware_versions ORDER BY upload_date DESC', [], (err, rows) => {
     if (err) {
+      logger.error('Database query error on history', { error: err.message });
       return res.status(500).json({ error: 'Database query error' });
     }
     res.json(rows);
@@ -246,10 +254,12 @@ app.delete('/api/firmware/:id', authenticateToken, (req, res) => {
     // First, get the file name from the database to delete it from the file system
     db.get('SELECT file_name, version, device FROM firmware_versions WHERE id = ?', [id], (err, row) => {
       if (err) {
+        logger.error(`Database error while finding firmware with ID: ${id}`, { error: err.message });
         return res.status(500).json({ error: 'Database query error while finding firmware' });
       }
 
       if (!row) {
+        logger.warn(`Attempted to delete non-existent firmware with ID: ${id}`);
         return res.status(404).json({ error: 'Firmware not found with the given ID' });
       }
 
@@ -257,16 +267,17 @@ app.delete('/api/firmware/:id', authenticateToken, (req, res) => {
       const firmwarePath = path.join(__dirname, 'firmware', row.file_name);
       if (fs.existsSync(firmwarePath)) {
         fs.unlinkSync(firmwarePath);
-        console.log(`Firmware file deleted: ${row.file_name}`);
+        logger.info(`Firmware file deleted from filesystem: ${row.file_name}`);
       }
 
       // Now, delete the record from the database
       db.run('DELETE FROM firmware_versions WHERE id = ?', [id], function(err) {
         if (err) {
+          logger.error(`Database error while deleting firmware record with ID: ${id}`, { error: err.message });
           return res.status(500).json({ error: 'Database deletion error' });
         }
         
-        console.log(`Firmware record deleted: ID ${id}, Version ${row.version}, Device ${row.device}`);
+        logger.info(`Firmware record deleted from database: ID ${id}`, { version: row.version, device: row.device });
         
         res.json({
           success: true,
@@ -275,7 +286,7 @@ app.delete('/api/firmware/:id', authenticateToken, (req, res) => {
       });
     });
   } catch (error) {
-    console.error('Error deleting firmware:', error);
+    logger.error(`Error deleting firmware with ID: ${req.params.id}`, { error: error.message });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -285,6 +296,7 @@ app.get('/api/logs', authenticateToken, (req, res) => {
   const limit = req.query.limit || 100;
   db.all('SELECT * FROM update_logs ORDER BY timestamp DESC LIMIT ?', [limit], (err, rows) => {
     if (err) {
+      logger.error('Database query error on logs', { error: err.message });
       return res.status(500).json({ error: 'Database query error' });
     }
     res.json(rows);
@@ -305,10 +317,16 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Centralized Error Handling Middleware
+app.use((err, req, res, next) => {
+  logger.error('Unhandled error caught', { error: err.message, stack: err.stack });
+  res.status(500).send({ error: 'Something broke!', message: err.message });
+});
+
 // Start server
 app.listen(port, () => {
-  console.log(`🚀 OTA Server is running at http://localhost:${port}`);
-  console.log(`📊 Health check: http://localhost:${port}/health`);
+  logger.info(`🚀 OTA Server is running at http://localhost:${port}`);
+  logger.info(`📊 Health check: http://localhost:${port}/health`);
 });
 
 // Initialize database
@@ -334,5 +352,5 @@ db.serialize(() => {
     timestamp TEXT NOT NULL
   )`);
   
-  console.log('✅ Database initialized successfully');
+  logger.info('✅ Database initialized successfully');
 });
