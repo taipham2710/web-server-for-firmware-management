@@ -6,7 +6,7 @@ const options = {
     info: {
       title: 'OTA Firmware Management API',
       version: '1.0.0',
-      description: 'API để quản lý và phân phối firmware cho ESP32 thông qua OTA updates',
+      description: 'API for managing and distributing firmware for ESP32 via OTA updates',
       contact: {
         name: 'API Support',
         email: 'support@example.com'
@@ -38,11 +38,109 @@ const options = {
       }
     ],
     paths: {
+      "/api/sensor": {
+        post: {
+          tags: ["Sensor"],
+          summary: "Send sensor data from device to server",
+          description: "ESP32 sends sensor data (temperature, humidity, light) to server.",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    device_id: { type: "string", description: "Device ID" },
+                    temp: { type: "number", description: "Temperature (Celsius)" },
+                    humidity: { type: "number", description: "Humidity (%)" },
+                    light: { type: "number", description: "Light intensity" }
+                  },
+                  required: ["device_id"]
+                }
+              }
+            }
+          },
+          responses: {
+            200: { 
+              description: "Sensor data recorded successfully",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      success: { type: "boolean" },
+                      message: { type: "string" }
+                    }
+                  }
+                }
+              }
+            },
+            400: { description: "Missing device_id or no sensor values" },
+            500: { description: "Internal server error" }
+          }
+        },
+        get: {
+          tags: ["Sensor"],
+          summary: "Get sensor data from database",
+          description: "Get stored sensor data (authentication required).",
+          security: [
+            {
+              bearerAuth: []
+            }
+          ],
+          parameters: [
+            {
+              in: "query",
+              name: "device_id",
+              schema: { type: "string" },
+              description: "Filter by specific device_id"
+            },
+            {
+              in: "query",
+              name: "limit",
+              schema: { type: "integer", default: 100 },
+              description: "Maximum number of records to return"
+            },
+            {
+              in: "query",
+              name: "offset",
+              schema: { type: "integer", default: 0 },
+              description: "Number of records to skip (for pagination)"
+            }
+          ],
+          responses: {
+            200: { 
+              description: "Sensor data retrieved successfully",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        id: { type: "integer" },
+                        device_id: { type: "string" },
+                        temperature: { type: "number" },
+                        humidity: { type: "number" },
+                        light: { type: "number" },
+                        timestamp: { type: "string", format: "date-time" }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            401: { description: "No token" },
+            403: { description: "Invalid token" },
+            500: { description: "Internal server error" }
+          }
+        }
+      },
       "/api/log": {
         post: {
           tags: ["Device"],
-          summary: "Gửi log OTA từ thiết bị về server",
-          description: "Thiết bị gửi trạng thái update (thành công/thất bại, latency, lỗi...) về server.",
+          summary: "Send OTA log from device to server",
+          description: "Device sends update status (success/failure, latency, error...) to server.",
           requestBody: {
             required: true,
             content: {
@@ -71,8 +169,8 @@ const options = {
       "/api/heartbeat": {
         post: {
           tags: ["Device"],
-          summary: "Thiết bị gửi heartbeat (trạng thái hoạt động) về server",
-          description: "Thiết bị gửi định kỳ để báo hiệu vẫn hoạt động sau update.",
+          summary: "Device sends heartbeat (operational status) to server",
+          description: "Device periodically sends to indicate it is still operating after update.",
           requestBody: {
             required: true,
             content: {
