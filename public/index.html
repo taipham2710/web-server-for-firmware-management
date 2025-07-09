@@ -15,7 +15,7 @@
       <p class="text-center text-muted">Manage and update firmware for ESP32, ESP8266 devices</p>
     </div>
 
-    <!-- Biểu đồ thống kê -->
+    <!-- chart containers -->
     <div class="row mt-4">
       <div class="col-12">
         <canvas id="otaSuccessChart" class="chart-full"></canvas>
@@ -29,7 +29,7 @@
     </div>
 
     <!-- API Token Configuration -->
-    <div class="card mb-4">
+    <div class="card mb-4" id="apiConfigCard">
       <div class="card-header">
         <h5>API Configuration</h5>
       </div>
@@ -186,6 +186,35 @@
         </div>
       </div>
     </div>
+
+    <!-- Sensor Data Table -->
+    <div class="row mt-4">
+      <div class="col-12">
+        <div class="card">
+          <div class="card-header">
+            <h5>Latest Sensor Data</h5>
+          </div>
+          <div class="card-body">
+            <div class="table-responsive table-scroll-5">
+              <table class="table table-striped">
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Device ID</th>
+                    <th>Temperature (°C)</th>
+                    <th>Humidity (%)</th>
+                    <th>Light</th>
+                  </tr>
+                </thead>
+                <tbody id="sensorDataTable">
+                  <!-- Sensor data rows will be inserted here -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Floating Action Buttons -->
@@ -211,19 +240,62 @@
     document.addEventListener('DOMContentLoaded', function() {
       const apiTokenInput = document.getElementById('apiToken');
       const saveTokenButton = document.getElementById('saveToken');
+      const apiConfigCard = document.getElementById('apiConfigCard');
+      const TOKEN_KEY = 'apiToken';
+      const TOKEN_TIME_KEY = 'apiTokenSavedAt';
+      const TOKEN_EXPIRE_MS = 5 * 24 * 60 * 60 * 1000; // 5 ngày
 
-      // Load token from localStorage
-      apiTokenInput.value = localStorage.getItem('apiToken') || '';
+      // Kiểm tra token và thời gian lưu
+      function checkTokenValidity() {
+        const token = localStorage.getItem(TOKEN_KEY);
+        const savedAt = localStorage.getItem(TOKEN_TIME_KEY);
+        if (token && savedAt) {
+          const now = Date.now();
+          if (now - parseInt(savedAt) < TOKEN_EXPIRE_MS) {
+            // Token còn hạn, ẩn khung cấu hình
+            apiConfigCard.style.display = 'none';
+            return true;
+          } else {
+            // Token hết hạn, xóa token và hiện lại khung
+            localStorage.removeItem(TOKEN_KEY);
+            localStorage.removeItem(TOKEN_TIME_KEY);
+            apiConfigCard.style.display = '';
+            apiTokenInput.value = '';
+            return false;
+          }
+        } else {
+          // Chưa có token, hiện khung
+          apiConfigCard.style.display = '';
+          return false;
+        }
+      }
 
-      // Save token to localStorage
+      // Khi load trang, kiểm tra token
+      checkTokenValidity();
+
+      // Nếu có token hợp lệ, load dữ liệu luôn
+      if (localStorage.getItem(TOKEN_KEY) && checkTokenValidity()) {
+        checkCurrentFirmware();
+        loadFirmwareHistory();
+        loadUpdateLogs();
+        loadDeviceStatus();
+        loadSensorData();
+      }
+
+      // Save token to localStorage và lưu thời gian
       saveTokenButton.addEventListener('click', () => {
-        const token = apiTokenInput.value;
+        const token = apiTokenInput.value.trim();
         if (token) {
-          localStorage.setItem('apiToken', token);
+          localStorage.setItem(TOKEN_KEY, token);
+          localStorage.setItem(TOKEN_TIME_KEY, Date.now().toString());
           alert('API Token saved!');
+          apiConfigCard.style.display = 'none';
           // Reload data with the new token
           checkCurrentFirmware();
           loadFirmwareHistory();
+          loadUpdateLogs();
+          loadDeviceStatus();
+          loadSensorData();
         } else {
           alert('Please enter an API Token.');
         }
@@ -414,13 +486,15 @@
       loadFirmwareHistory();
       loadUpdateLogs();
       loadDeviceStatus();
+      loadSensorData();
 
-      // Tự động reload dữ liệu mỗi 10 giây
+      // Auto-refresh data every 5 minutes
       setInterval(() => {
         loadUpdateLogs();
         loadDeviceStatus();
         loadFirmwareHistory();
-      }, 10000); // 10,000 ms = 10s
+        loadSensorData();
+      }, 300000); // 5 minutes in milliseconds
 
       // Function to get and display firmware history
       function loadFirmwareHistory() {
@@ -488,7 +562,6 @@
                 <td>${log.latency_ms !== undefined && log.latency_ms !== null ? log.latency_ms : ''}</td>
               </tr>
             `).join('');
-            // Vẽ biểu đồ OTA success/fail và latency
             renderOtaSuccessChart(data);
             renderOtaLatencyChart(data);
           })
@@ -515,7 +588,7 @@
         }
       }
 
-      // Hàm fetch và render Device Status
+      // Function to get and display device status
       function loadDeviceStatus() {
         fetch('/api/devices', { headers: getAuthHeaders() })
           .then(response => {
@@ -550,7 +623,7 @@
                 </tr>
               `;
             }).join('');
-            // Vẽ biểu đồ device online/offline
+            // Draw the device online/offline chart
             renderDeviceOnlineChart(data);
           })
           .catch(error => {
@@ -560,7 +633,7 @@
           });
       }
 
-      // Biểu đồ OTA success/fail
+      // Chart OTA Success Rate
       function renderOtaSuccessChart(logs) {
         const success = logs.filter(l => l.status === 'update_success').length;
         const failed = logs.filter(l => l.status !== 'update_success').length;
@@ -584,10 +657,10 @@
         });
       }
 
-      // Biểu đồ latency OTA
+      // Chart OTA Latency
       function renderOtaLatencyChart(logs) {
         const latencyLogs = logs.filter(l => l.latency_ms !== undefined && l.latency_ms !== null);
-        // Hiển thị tối đa 30 log mới nhất
+        // Show only the most recent 30 logs
         const recentLogs = latencyLogs.slice(0, 30);
         const labels = recentLogs.map(l => l.device_id + ' ' + l.version);
         const data = recentLogs.map(l => l.latency_ms);
@@ -628,7 +701,7 @@
         });
       }
 
-      // Biểu đồ device online/offline
+      // Chart device online/offline
       function renderDeviceOnlineChart(devices) {
         const online = devices.filter(d => {
           const lastSeen = new Date(d.last_seen);
@@ -705,6 +778,35 @@
           e.preventDefault();
           exportCsv('/api/export/logs', 'update_logs.csv');
       });
+
+      // Function to get and display latest sensor data
+      function loadSensorData() {
+        fetch('/api/sensor?limit=10', { headers: getAuthHeaders() })
+          .then(response => {
+            if (response.status === 401 || response.status === 403) throw new Error('Authentication failed. Check your API Token.');
+            if (!response.ok) throw new Error('Unable to load sensor data');
+            return response.json();
+          })
+          .then(data => {
+            const tbody = document.getElementById('sensorDataTable');
+            if (!data.length) {
+              tbody.innerHTML = `<tr><td colspan="5" class="text-center">No sensor data available</td></tr>`;
+              return;
+            }
+            tbody.innerHTML = data.map(row => `
+              <tr>
+                <td>${new Date(row.timestamp).toLocaleString()}</td>
+                <td>${row.device_id}</td>
+                <td>${row.temperature !== undefined && row.temperature !== null ? row.temperature : '-'}</td>
+                <td>${row.humidity !== undefined && row.humidity !== null ? row.humidity : '-'}</td>
+                <td>${row.light !== undefined && row.light !== null ? row.light : '-'}</td>
+              </tr>
+            `).join('');
+          })
+          .catch(error => {
+            document.getElementById('sensorDataTable').innerHTML = `<tr><td colspan="5" class="text-center text-danger">${error.message}</td></tr>`;
+          });
+      }
     });
   </script>
 </body>
