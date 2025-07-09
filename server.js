@@ -26,6 +26,8 @@ if (!fs.existsSync(FIRMWARE_DIR)) {
 
 const db = new sqlite3.Database(DB_PATH);
 const app = express();
+app.set('trust proxy', 1);
+app.disable('etag');
 const port = process.env.PORT || 3000;
 
 // Rate Limiting Configuration
@@ -162,8 +164,8 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs, {
  * @swagger
  * /api/firmware/version:
  *   get:
- *     summary: Lấy thông tin phiên bản firmware mới nhất
- *     description: ESP32 sử dụng endpoint này để kiểm tra phiên bản mới nhất
+ *     summary: Get the latest firmware version information
+ *     description: ESP32 uses this endpoint to check for the latest firmware version
  *     tags: [Firmware]
  *     parameters:
  *       - in: query
@@ -171,10 +173,10 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs, {
  *         schema:
  *           type: string
  *           default: esp32
- *         description: Loại thiết bị (esp32, esp8266)
+ *         description: Device type (esp32, esp8266)
  *     responses:
  *       200:
- *         description: Thông tin phiên bản mới nhất
+ *         description: Latest version information
  *         content:
  *           application/json:
  *             schema:
@@ -182,7 +184,7 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs, {
  *               properties:
  *                 id:
  *                   type: integer
- *                   description: ID của firmware
+ *                   description: Firmware ID
  *                 version:
  *                   type: string
  *                   example: "v1.0.3"
@@ -191,20 +193,20 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs, {
  *                   example: "esp32"
  *                 url:
  *                   type: string
- *                   description: URL để tải firmware
+ *                   description: URL to download firmware
  *                 checksum:
  *                   type: string
- *                   description: MD5 checksum của file
+ *                   description: MD5 checksum of the file
  *                 notes:
  *                   type: string
- *                   description: Ghi chú về phiên bản
+ *                   description: Version notes
  *                 uploadDate:
  *                   type: string
  *                   format: date-time
  *       404:
- *         description: Không tìm thấy firmware cho thiết bị
+ *         description: Firmware not found for device
  *       500:
- *         description: Lỗi server
+ *         description: Server error
  */
 // Route to get the latest version information (ESP32 compatible format)
 app.get('/api/firmware/version', (req, res) => {
@@ -245,8 +247,8 @@ app.get('/api/firmware/version', (req, res) => {
  * @swagger
  * /api/firmware/download:
  *   get:
- *     summary: Tải firmware về
- *     description: ESP32 sử dụng endpoint này để tải firmware file
+ *     summary: Download firmware
+ *     description: ESP32 uses this endpoint to download firmware file
  *     tags: [Firmware]
  *     parameters:
  *       - in: query
@@ -254,28 +256,28 @@ app.get('/api/firmware/version', (req, res) => {
  *         schema:
  *           type: string
  *           default: esp32
- *         description: Loại thiết bị
+ *         description: Device type
  *         required: true
  *       - in: query
  *         name: version
  *         schema:
  *           type: string
- *         description: Phiên bản firmware (có thể có prefix 'v')
+ *         description: Firmware version (may have prefix 'v')
  *         required: true
  *     responses:
  *       200:
- *         description: File firmware được tải về
+ *         description: Firmware file downloaded
  *         content:
  *           application/octet-stream:
  *             schema:
  *               type: string
  *               format: binary
  *       400:
- *         description: Thiếu thông tin version
+ *         description: Missing version information
  *       404:
- *         description: Không tìm thấy firmware
+ *         description: Firmware not found
  *       500:
- *         description: Lỗi server
+ *         description: Server error
  */
 // Route to download firmware
 app.get('/api/firmware/download', (req, res) => {
@@ -311,8 +313,8 @@ app.get('/api/firmware/download', (req, res) => {
  * @swagger
  * /api/firmware/upload:
  *   post:
- *     summary: Upload firmware mới
- *     description: Upload firmware mới lên server (cần authentication)
+ *     summary: Upload new firmware
+ *     description: Upload new firmware to server (authentication required)
  *     tags: [Firmware Management]
  *     security:
  *       - bearerAuth: []
@@ -329,21 +331,21 @@ app.get('/api/firmware/download', (req, res) => {
  *               firmware:
  *                 type: string
  *                 format: binary
- *                 description: File firmware (.bin)
+ *                 description: Firmware file (.bin)
  *               version:
  *                 type: string
- *                 description: Phiên bản firmware
+ *                 description: Firmware version
  *                 example: "1.0.0"
  *               device:
  *                 type: string
- *                 description: Loại thiết bị
+ *                 description: Device type
  *                 example: "esp32"
  *               notes:
  *                 type: string
- *                 description: Ghi chú về phiên bản
+ *                 description: Version notes
  *     responses:
  *       200:
- *         description: Upload thành công
+ *         description: Upload successful
  *         content:
  *           application/json:
  *             schema:
@@ -360,15 +362,15 @@ app.get('/api/firmware/download', (req, res) => {
  *                 checksum:
  *                   type: string
  *       400:
- *         description: Dữ liệu không hợp lệ
+ *         description: Invalid data
  *       401:
- *         description: Không có token
+ *         description: No token
  *       403:
- *         description: Token không hợp lệ
+ *         description: Invalid token
  *       429:
- *         description: Quá nhiều request
+ *         description: Too many requests
  *       500:
- *         description: Lỗi server
+ *         description: Server error
  */
 // Route to upload new firmware (authentication required)
 app.post('/api/firmware/upload', uploadLimiter, authenticateToken, upload.single('firmware'), (req, res) => {
@@ -508,26 +510,26 @@ app.get('/api/logs', authenticateToken, (req, res) => {
  * @swagger
  * /api/export/firmware:
  *   get:
- *     summary: Export danh sách firmware ra CSV
- *     description: Xuất tất cả firmware versions ra file CSV
+ *     summary: Export firmware list to CSV
+ *     description: Export all firmware versions to CSV file
  *     tags: [Export]
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: File CSV được tải về
+ *         description: CSV file downloaded
  *         content:
  *           text/csv:
  *             schema:
  *               type: string
  *       401:
- *         description: Không có token
+ *         description: No token
  *       403:
- *         description: Token không hợp lệ
+ *         description: Invalid token
  *       404:
- *         description: Không có dữ liệu để export
+ *         description: No data to export
  *       500:
- *         description: Lỗi server
+ *         description: Server error
  */
 // Route to export firmware versions as CSV (authentication required)
 app.get('/api/export/firmware', authenticateToken, (req, res) => {
@@ -574,8 +576,8 @@ app.get('/api/export/firmware', authenticateToken, (req, res) => {
  * @swagger
  * /api/export/logs:
  *   get:
- *     summary: Export logs ra CSV
- *     description: Xuất update logs ra file CSV
+ *     summary: Export logs to CSV
+ *     description: Export update logs to CSV file
  *     tags: [Export]
  *     security:
  *       - bearerAuth: []
@@ -585,22 +587,22 @@ app.get('/api/export/firmware', authenticateToken, (req, res) => {
  *         schema:
  *           type: integer
  *           default: 1000
- *         description: Số lượng log tối đa để export
+ *         description: Maximum number of logs to export
  *     responses:
  *       200:
- *         description: File CSV được tải về
+ *         description: CSV file downloaded
  *         content:
  *           text/csv:
  *             schema:
  *               type: string
  *       401:
- *         description: Không có token
+ *         description: No token
  *       403:
- *         description: Token không hợp lệ
+ *         description: Invalid token
  *       404:
- *         description: Không có dữ liệu để export
+ *         description: No data to export
  *       500:
- *         description: Lỗi server
+ *         description: Server error
  */
 // Route to export update logs as CSV (authentication required)
 app.get('/api/export/logs', authenticateToken, (req, res) => {
@@ -665,7 +667,7 @@ app.use((err, req, res, next) => {
 });
 
 // Start server
-app.listen(port, () => {
+app.listen(port, '0.0.0.0', () => {
   logger.info(`🚀 OTA Server is running at http://localhost:${port}`);
   logger.info(`📊 Health check: http://localhost:${port}/health`);
 });
@@ -701,6 +703,16 @@ db.serialize(() => {
     status TEXT,
     firmware_version TEXT
   )`);
+
+  // Sensor data table
+  db.run(`CREATE TABLE IF NOT EXISTS sensor_data (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    device_id TEXT NOT NULL,
+    temperature REAL,
+    humidity REAL,
+    light REAL,
+    timestamp TEXT NOT NULL
+  )`);
   
   logger.info('✅ Database initialized successfully');
 });
@@ -723,10 +735,172 @@ app.post('/api/heartbeat', (req, res) => {
   );
 });
 
-// Endpoint lấy danh sách thiết bị và trạng thái
+// Endpoint to get device list and status
 app.get('/api/devices', authenticateToken, (req, res) => {
   db.all('SELECT * FROM device_status', [], (err, rows) => {
     if (err) return res.status(500).json({ error: 'DB error' });
     res.json(rows);
   });
+});
+
+/**
+ * @swagger
+ * /api/sensor:
+ *   post:
+ *     summary: Send sensor data from device to server
+ *     description: ESP32 sends sensor data (temperature, humidity, light) to server
+ *     tags: [Sensor]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               device_id:
+ *                 type: string
+ *                 description: Device ID
+ *               temp:
+ *                 type: number
+ *                 description: Temperature (Celsius)
+ *               humidity:
+ *                 type: number
+ *                 description: Humidity (%)
+ *               light:
+ *                 type: number
+ *                 description: Light intensity
+ *             required:
+ *               - device_id
+ *     responses:
+ *       200:
+ *         description: Sensor data recorded successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *       400:
+ *         description: Missing device_id or no sensor values
+ *       500:
+ *         description: Internal server error
+ */
+// Endpoint receives sensor data from ESP32
+app.post('/api/sensor', (req, res) => {
+  try {
+    const { device_id, temp } = req.body;
+    
+    if (!device_id) {
+      return res.status(400).json({ error: 'Missing device_id' });
+    }
+    if (temp === undefined) {
+      return res.status(400).json({ error: 'Missing temperature value' });
+    }
+
+    const now = new Date().toISOString();
+    // Only save device_id and temperature, leave other fields null
+    const stmt = db.prepare(`INSERT INTO sensor_data (device_id, temperature, humidity, light, timestamp) VALUES (?, ?, NULL, NULL, ?)`);
+    stmt.run(device_id, temp, now);
+    stmt.finalize();
+    
+    logger.info(`Sensor data received from device ${device_id}`, { temp });
+    
+    res.json({
+      success: true,
+      message: 'Sensor data recorded successfully'
+    });
+  } catch (error) {
+    logger.error('Error recording sensor data', { error: error.message, body: req.body });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/sensor:
+ *   get:
+ *     summary: Get sensor data from database
+ *     description: Get stored sensor data (authentication required)
+ *     tags: [Sensor]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: device_id
+ *         schema:
+ *           type: string
+ *         description: Filter by specific device_id
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 100
+ *         description: Maximum number of records to return
+ *       - in: query
+ *         name: offset
+ *         schema:
+ *           type: integer
+ *           default: 0
+ *         description: Number of records to skip (for pagination)
+ *     responses:
+ *       200:
+ *         description: Sensor data retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   id:
+ *                     type: integer
+ *                   device_id:
+ *                     type: string
+ *                   temperature:
+ *                     type: number
+ *                   humidity:
+ *                     type: number
+ *                   light:
+ *                     type: number
+ *                   timestamp:
+ *                     type: string
+ *                     format: date-time
+ *       401:
+ *         description: No token
+ *       403:
+ *         description: Invalid token
+ *       500:
+ *         description: Internal server error
+ */
+// Endpoint to get sensor data (can be used for frontend)
+app.get('/api/sensor', authenticateToken, (req, res) => {
+  try {
+    const { device_id, limit = 100, offset = 0 } = req.query;
+    
+    let query = 'SELECT * FROM sensor_data';
+    let params = [];
+    
+    if (device_id) {
+      query += ' WHERE device_id = ?';
+      params.push(device_id);
+    }
+    
+    query += ' ORDER BY timestamp DESC LIMIT ? OFFSET ?';
+    params.push(parseInt(limit), parseInt(offset));
+    
+    db.all(query, params, (err, rows) => {
+      if (err) {
+        logger.error('Database query error on sensor data', { error: err.message });
+        return res.status(500).json({ error: 'Database query error' });
+      }
+      
+      res.json(rows);
+    });
+  } catch (error) {
+    logger.error('Error fetching sensor data', { error: error.message });
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
